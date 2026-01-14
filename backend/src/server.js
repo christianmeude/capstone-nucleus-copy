@@ -3,7 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const authRoutes = require('./routes/auth.routes');
 const researchRoutes = require('./routes/research.routes');
-
+const aiRoutes = require('./routes/ai.routes'); // Add this line
 dotenv.config();
 
 const app = express();
@@ -16,6 +16,7 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/research', researchRoutes);
+app.use('/api/ai', aiRoutes); // Add this line
 
 // Health check
 app.get('/health', (req, res) => {
@@ -36,3 +37,4 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+

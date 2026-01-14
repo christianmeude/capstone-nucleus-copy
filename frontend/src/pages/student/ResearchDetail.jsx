@@ -24,9 +24,10 @@ import {
   Lightbulb,
   Heart,
   ShieldCheck,
-  Maximize2 // Added for the preview header
+  Maximize2
 } from 'lucide-react';
 import { researchAPI } from '../../utils/api';
+import ResearchChat from '../../components/ai/ResearchChat'; // Add this import
 
 const ResearchDetail = () => {
   const { id } = useParams();
@@ -485,6 +486,14 @@ const ResearchDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* AI Chat Component - Floats over the page */}
+      {paper && paper.file_url && (
+        <ResearchChat 
+          paperId={paper.id} 
+          fileUrl={paper.file_url} 
+        />
+      )}
     </div>
   );
 };

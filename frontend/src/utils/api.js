@@ -70,4 +70,27 @@ export const analyticsAPI = {
   getCategoryStats: () => api.get('/analytics/categories'),
 };
 
+export const aiAPI = {
+  chatWithPaper: async (paperId, fileUrl, message) => {
+    const response = await fetch('http://localhost:5000/api/ai/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        paperId,
+        fileUrl,
+        message
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to chat with paper');
+    }
+
+    return response.json();
+  }
+};
+
 export default api;
