@@ -618,43 +618,92 @@ exports.requestRevision = async (req, res) => {
     // Get current paper to check its status
     const { data: paper, error: fetchError } = await supabase
       .from('research_papers')
-      .select('status, faculty_id')
+      .select('*')
       .eq('id', id)
       .single();
 
     if (fetchError || !paper) {
       console.error('Paper not found:', fetchError);
-      return res.status(404).json({ error: 'Paper not found' });
+      return res.status(404).json({ error: 'Paper not found', details: fetchError?.message });
     }
 
     console.log('Current paper status:', paper.status);
 
-    // Update to revision_required and store which role requested it
-    const updateData = { 
-      status: 'revision_required', 
-      revision_notes: notes
-    };
+    // Determine new status and notification recipient based on reviewer role
+    let newStatus;
+    let notificationUserId;
+    let notificationTitle;
+    let notificationMessage;
 
-    // Try to store reviewer info (these columns might not exist, so we'll try)
-    try {
-      updateData.last_reviewer_role = reviewerRole;
-      updateData.previous_status = paper.status;
-    } catch (e) {
-      console.log('Could not store reviewer tracking fields');
+    if (reviewerRole === 'faculty' && paper.status === 'pending_faculty') {
+      // Faculty sends directly to student for revision
+      newStatus = 'revision_required';
+      notificationUserId = paper.student_id;
+      notificationTitle = `Revision Required: ${paper.title}`;
+      notificationMessage = `Your faculty advisor requires revisions. Notes: ${notes}`;
+      console.log('Flow: Faculty → Student (revision required)');
+    } 
+    else if (reviewerRole === 'staff' && paper.status === 'pending_editor') {
+      // Staff sends back to faculty for review
+      newStatus = 'pending_faculty';
+      notificationUserId = paper.faculty_id;
+      notificationTitle = `Paper Returned for Review: ${paper.title}`;
+      notificationMessage = `The editor has concerns and returned this paper to you. Editor notes: ${notes}`;
+      console.log('Flow: Staff → Faculty (returned with notes)');
     }
+    else if (reviewerRole === 'admin' && paper.status === 'pending_admin') {
+      // Admin sends back to staff/editor for review
+      newStatus = 'pending_editor';
+      notificationUserId = paper.reviewed_by || paper.faculty_id;
+      notificationTitle = `Paper Returned for Review: ${paper.title}`;
+      notificationMessage = `The admin has concerns and returned this paper. Admin notes: ${notes}`;
+      console.log('Flow: Admin → Staff (returned with notes)');
+    }
+    else {
+      return res.status(400).json({ 
+        error: `Cannot request revision from status "${paper.status}" as role "${reviewerRole}"` 
+      });
+    }
+
+    // Update paper with new status and revision notes
+    const updateData = { 
+      status: newStatus, 
+      revision_notes: notes,
+      last_reviewer_role: reviewerRole,
+      previous_status: paper.status,
+      updated_at: new Date().toISOString()
+    };
 
     const { data: updatedPaper, error: updateError } = await supabase
       .from('research_papers')
       .update(updateData)
       .eq('id', id)
-      .select();
+      .select()
+      .single();
 
     if (updateError) {
       console.error('Update error:', updateError);
       return res.status(500).json({ error: 'Failed to update paper status', details: updateError.message });
     }
 
-    console.log('Paper updated successfully:', updatedPaper);
+    console.log('Paper updated successfully. New status:', updatedPaper.status);
+    
+    // Create notification for the appropriate user
+    if (notificationUserId) {
+      const { error: notifError } = await supabase
+        .from('notifications')
+        .insert({
+          user_id: notificationUserId,
+          research_id: id,
+          type: newStatus === 'revision_required' ? 'revision_required' : 'returned_for_review',
+          title: notificationTitle,
+          message: notificationMessage
+        });
+
+      if (notifError) {
+        console.error('Notification error:', notifError);
+      }
+    }
     
     // Try to insert into approval_workflow if table exists
     try {
@@ -662,14 +711,18 @@ exports.requestRevision = async (req, res) => {
         research_id: id, 
         reviewer_id: req.user.id, 
         reviewer_role: reviewerRole, 
-        status: 'revision_required', 
+        status: newStatus === 'revision_required' ? 'revision_required' : 'returned', 
         comments: notes
       }]);
     } catch (workflowError) {
       console.log('Approval workflow insert skipped:', workflowError.message);
     }
 
-    res.json({ message: 'Revision requested successfully', newStatus: 'revision_required' });
+    res.json({ 
+      message: 'Revision requested successfully', 
+      newStatus: newStatus,
+      paper: updatedPaper 
+    });
   } catch (error) {
     console.error('=== REQUEST REVISION ERROR ===');
     console.error('Error message:', error.message);

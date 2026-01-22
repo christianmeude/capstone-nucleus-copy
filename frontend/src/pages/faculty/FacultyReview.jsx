@@ -361,6 +361,23 @@ const FacultyReview = () => {
                       </div>
                     </div>
 
+                    {/* Show alert if paper was returned from staff/admin with notes */}
+                    {paper.status === 'pending_faculty' && paper.revision_notes && paper.last_reviewer_role && (
+                      <div className="mb-4 p-3 bg-orange-50 border-l-4 border-orange-500 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle size={18} className="text-orange-600 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="text-sm font-bold text-orange-900">
+                              Returned by {paper.last_reviewer_role === 'staff' ? 'Editor' : 'Admin'}
+                            </p>
+                            <p className="text-sm text-orange-700 mt-1">
+                              {paper.revision_notes}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <p className="text-slate-600 mb-4 line-clamp-2">{paper.abstract}</p>
 
                     <div className="flex flex-wrap items-center gap-6 text-sm">
