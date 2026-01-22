@@ -1,31 +1,46 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Loader2, Minimize2, Maximize2 } from 'lucide-react';
+import { MessageSquare, X, Send, Sparkles, ChevronRight, Paperclip } from 'lucide-react';
+
+const TypingMessage = ({ content, onComplete }) => {
+  const [displayedText, setDisplayedText] = useState('');
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (index < content.length) {
+      // Increased speed: revealing 2-3 characters at a time for a snappier feel
+      const timeout = setTimeout(() => {
+        setDisplayedText(content.slice(0, index + 3));
+        setIndex((prev) => prev + 3);
+      }, 10); 
+      return () => clearTimeout(timeout);
+    } else if (onComplete) {
+      onComplete();
+    }
+  }, [index, content, onComplete]);
+
+  return <p className="text-sm leading-relaxed whitespace-pre-wrap">{displayedText}</p>;
+};
 
 const ResearchChat = ({ paperId, fileUrl }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (isOpen) scrollToBottom();
+  }, [messages, isOpen, isLoading]);
 
-  const handleSendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+  const handleSendMessage = async (text = input) => {
+    const messageContent = text.trim();
+    if (!messageContent || isLoading) return;
 
-    const userMessage = {
-      id: Date.now(),
-      type: 'user',
-      content: input.trim()
-    };
-
+    const userMessage = { id: Date.now(), type: 'user', content: messageContent };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
@@ -33,153 +48,163 @@ const ResearchChat = ({ paperId, fileUrl }) => {
     try {
       const response = await fetch('http://localhost:5000/api/ai/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          paperId,
-          fileUrl,
-          message: userMessage.content
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paperId, fileUrl, message: messageContent })
       });
 
       const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to get response');
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to get response');
-      }
-
-      const aiMessage = {
+      setMessages(prev => [...prev, {
         id: Date.now() + 1,
         type: 'ai',
-        content: data.response
-      };
-
-      setMessages(prev => [...prev, aiMessage]);
+        content: data.response,
+        isNew: true 
+      }]);
     } catch (error) {
-      console.error('Error sending message:', error);
-      const errorMessage = {
+      setMessages(prev => [...prev, {
         id: Date.now() + 1,
         type: 'error',
         content: `Error: ${error.message}`
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg transition-all duration-200 flex items-center gap-2 z-50"
-      >
-        <MessageSquare className="w-6 h-6" />
-        <span className="font-medium">Ask this Paper</span>
-      </button>
-    );
-  }
-
   return (
-    <div
-      className={`fixed bottom-6 right-6 bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col z-50 transition-all duration-200 ${
-        isMinimized ? 'w-80 h-14' : 'w-96 h-[600px]'
-      }`}
-    >
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-t-lg">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-5 h-5" />
-          <h3 className="font-semibold">Ask this Paper</h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsMinimized(!isMinimized)}
-            className="hover:bg-blue-500 p-1 rounded transition-colors"
-          >
-            {isMinimized ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="hover:bg-blue-500 p-1 rounded transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {!isMinimized && (
-        <>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 ? (
-              <div className="text-center text-gray-500 mt-8">
-                <MessageSquare className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                <p className="text-sm">Ask me anything about this paper!</p>
-                <p className="text-xs mt-2 text-gray-400">
-                  Try: "What is the main finding?" or "Summarize the methodology"
-                </p>
-              </div>
-            ) : (
-              messages.map(msg => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[80%] rounded-lg p-3 ${
-                      msg.type === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : msg.type === 'error'
-                        ? 'bg-red-100 text-red-800 border border-red-300'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}
-                  >
-                    <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                  </div>
-                </div>
-              ))
-            )}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-gray-100 rounded-lg p-3 flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                  <span className="text-sm text-gray-600">Analyzing paper...</span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+    <>
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-8 right-8 bg-white border border-slate-200 text-slate-700 rounded-full px-6 py-3 shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3 z-40 group hover:scale-105 animate-fadeIn"
+        >
+          <div className="w-8 h-8 rounded-full gemini-gradient flex items-center justify-center text-white">
+            <Sparkles className="w-4 h-4 animate-pulse" />
           </div>
+          <span className="font-semibold text-sm">Analyze with AI</span>
+        </button>
+      )}
 
-          <div className="p-4 border-t border-gray-200">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Ask a question about this paper..."
-                disabled={isLoading}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
-              />
-              <button
-                onClick={handleSendMessage}
-                disabled={!input.trim() || isLoading}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white p-2 rounded-lg transition-colors"
-              >
-                <Send className="w-5 h-5" />
-              </button>
+      {/* Backdrop with smooth Fade */}
+      <div 
+        className={`fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 transition-opacity duration-500 ease-in-out ${
+          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setIsOpen(false)}
+      />
+
+      {/* Drawer with smooth Slide Out */}
+      <div
+        className={`fixed top-0 right-0 h-full bg-white shadow-2xl z-50 transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) transform flex flex-col ${
+          isOpen ? 'translate-x-0 w-full md:w-[450px]' : 'translate-x-full w-full md:w-[450px]'
+        }`}
+      >
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl gemini-gradient flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-900 text-lg">Research Assistant</h3>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Powered by Gemini AI</p>
             </div>
           </div>
-        </>
-      )}
-    </div>
+          <button 
+            onClick={() => setIsOpen(false)}
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin">
+          {/* Suggestions remain visible at the top */}
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-4">
+            <p className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider">Suggested Actions</p>
+            <div className="flex flex-wrap gap-2">
+              {["Summarize Findings", "Explain Methodology", "Key Contributions"].map((suggestion) => (
+                <button 
+                  key={suggestion}
+                  onClick={() => handleSendMessage(suggestion)}
+                  className="bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600 hover:border-indigo-400 hover:text-indigo-600 transition-all shadow-sm"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {messages.map(msg => (
+            <div key={msg.id} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'} animate-fadeIn`}>
+              <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                msg.type === 'user'
+                  ? 'bg-slate-900 text-white rounded-tr-none shadow-md'
+                  : msg.type === 'error'
+                  ? 'bg-red-50 text-red-700 border border-red-100 text-xs'
+                  : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200 shadow-sm'
+              }`}>
+                {msg.type === 'ai' && msg.isNew ? (
+                  <TypingMessage 
+                    content={msg.content} 
+                    onComplete={() => {
+                      msg.isNew = false;
+                      scrollToBottom();
+                    }} 
+                  />
+                ) : (
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                )}
+              </div>
+            </div>
+          ))}
+          
+          {isLoading && (
+            <div className="flex justify-start animate-fadeIn">
+              <div className="w-full max-w-[85%] rounded-2xl p-4 animate-shimmer border border-blue-100 rounded-tl-none">
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1">
+                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-1.5 h-1.5 bg-pink-400 rounded-full animate-bounce"></div>
+                  </div>
+                  <span className="text-xs font-medium text-slate-500 italic">Analyzing context...</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} className="h-4" />
+        </div>
+
+        <div className="p-6 border-t border-slate-100 bg-white">
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-4 flex items-center text-slate-400">
+               <Paperclip className="w-4 h-4" />
+            </div>
+            <textarea
+              rows="1"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              placeholder="Message your assistant..."
+              className="w-full pl-11 pr-14 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none text-sm"
+            />
+            <button
+              onClick={() => handleSendMessage()}
+              disabled={!input.trim() || isLoading}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 rounded-xl gemini-gradient text-white shadow-md disabled:opacity-30 transition-all hover:scale-105"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
   );
 };
 
