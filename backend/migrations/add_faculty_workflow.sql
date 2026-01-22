@@ -24,6 +24,19 @@ ADD COLUMN IF NOT EXISTS faculty_id UUID REFERENCES users(id) ON DELETE SET NULL
 ALTER TABLE research_papers 
 ADD COLUMN IF NOT EXISTS department VARCHAR(100);
 
+-- Add revision tracking fields
+ALTER TABLE research_papers 
+ADD COLUMN IF NOT EXISTS revision_notes TEXT;
+
+ALTER TABLE research_papers 
+ADD COLUMN IF NOT EXISTS last_reviewer_role VARCHAR(20);
+
+ALTER TABLE research_papers 
+ADD COLUMN IF NOT EXISTS previous_status VARCHAR(50);
+
+ALTER TABLE research_papers 
+ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+
 -- Add index for faster queries
 CREATE INDEX IF NOT EXISTS idx_research_papers_faculty_id ON research_papers(faculty_id);
 CREATE INDEX IF NOT EXISTS idx_research_papers_department ON research_papers(department);

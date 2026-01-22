@@ -31,6 +31,7 @@ const FacultyReview = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [stats, setStats] = useState({
     pendingFaculty: 0,
+    revisionRequired: 0,
     facultyApproved: 0,
     total: 0
   });
@@ -61,6 +62,7 @@ const FacultyReview = () => {
       // Calculate stats
       const statsData = {
         pendingFaculty: allPapers.filter(p => p.status === 'pending_faculty').length,
+        revisionRequired: allPapers.filter(p => p.status === 'revision_required').length,
         facultyApproved: allPapers.filter(p => p.status === 'pending_editor' || p.status === 'pending_admin' || p.status === 'approved').length,
         total: allPapers.length
       };
@@ -79,7 +81,10 @@ const FacultyReview = () => {
     
     // Apply status filter
     if (statusFilter === 'pending_faculty') {
-      filtered = papers.filter(p => p.status === 'pending_faculty');
+      // Show both pending_faculty and revision_required papers that need faculty action
+      filtered = papers.filter(p => p.status === 'pending_faculty' || p.status === 'revision_required');
+    } else if (statusFilter === 'revision_required') {
+      filtered = papers.filter(p => p.status === 'revision_required');
     } else if (statusFilter !== 'all') {
       filtered = papers.filter(p => p.status === statusFilter);
     }
@@ -175,7 +180,8 @@ const FacultyReview = () => {
   };
 
   const filterOptions = [
-    { id: 'pending_faculty', label: 'Pending Review', count: stats.pendingFaculty, color: 'from-yellow-500 to-amber-500' },
+    { id: 'pending_faculty', label: 'Needs Review', count: stats.pendingFaculty + stats.revisionRequired, color: 'from-yellow-500 to-amber-500' },
+    { id: 'revision_required', label: 'Revisions', count: stats.revisionRequired, color: 'from-orange-500 to-red-500' },
     { id: 'pending_editor', label: 'With Editor', count: papers.filter(p => p.status === 'pending_editor').length, color: 'from-blue-500 to-cyan-500' },
     { id: 'all', label: 'All Assigned', count: stats.total, color: 'from-slate-500 to-slate-700' }
   ];

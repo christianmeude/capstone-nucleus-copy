@@ -57,8 +57,11 @@ exports.submitResearch = async (req, res) => {
         author_id: userId,
         faculty_id: facultyId || null,
         department: department || null,
-        // If faculty is assigned, use new workflow (pending_faculty), otherwise use legacy workflow (pending)
-        status: id ? undefined : (facultyId ? 'pending_faculty' : 'pending'), 
+        // Status logic:
+        // - New submission with faculty: pending_faculty
+        // - New submission without faculty: pending
+        // - Resubmission: return to the stage that requested revision
+        status: id ? undefined : (facultyId ? 'pending_faculty' : 'pending'),
         ...fileData 
       })
       .select()
@@ -67,6 +70,52 @@ exports.submitResearch = async (req, res) => {
     if (dbError) {
       console.error('Database error:', dbError);
       return res.status(500).json({ error: 'Failed to save research data' });
+    }
+
+    // Handle revision resubmission - return paper to the appropriate reviewer
+    if (id) {
+      const { data: existingPaper } = await supabase
+        .from('research_papers')
+        .select('status, last_reviewer_role, previous_status, faculty_id')
+        .eq('id', id)
+        .single();
+
+      if (existingPaper && existingPaper.status === 'revision_required') {
+        // Determine where to return the paper based on who requested the revision
+        let newStatus;
+        const lastReviewerRole = existingPaper.last_reviewer_role;
+        const previousStatus = existingPaper.previous_status;
+
+        if (lastReviewerRole === 'faculty') {
+          newStatus = 'pending_faculty';
+        } else if (lastReviewerRole === 'staff') {
+          newStatus = 'pending_editor';
+        } else if (lastReviewerRole === 'admin') {
+          newStatus = 'pending_admin';
+        } else if (previousStatus) {
+          // Fallback to previous status if last_reviewer_role is not set
+          newStatus = previousStatus;
+        } else if (existingPaper.faculty_id) {
+          // Default: if faculty is assigned, go back to faculty
+          newStatus = 'pending_faculty';
+        } else {
+          // Legacy papers without faculty
+          newStatus = 'pending';
+        }
+
+        console.log(`Resubmission: Returning paper ${id} from revision_required to ${newStatus}`);
+
+        // Update the status
+        await supabase
+          .from('research_papers')
+          .update({ 
+            status: newStatus,
+            revision_notes: null,
+            last_reviewer_role: null,
+            previous_status: null
+          })
+          .eq('id', id);
+      }
     }
 
     const { data: author } = await supabase
@@ -512,16 +561,43 @@ exports.rejectResearch = async (req, res) => {
     const { reason } = req.body;
     if (!reason) return res.status(400).json({ error: 'Rejection reason is required' });
 
-    const { data: paper } = await supabase.from('research_papers').select('author_id, title').eq('id', id).single();
+    const { data: paper, error: fetchError } = await supabase
+      .from('research_papers')
+      .select('author_id, title')
+      .eq('id', id)
+      .single();
     
-    await supabase.from('research_papers').update({ status: 'rejected', rejection_reason: reason }).eq('id', id);
-    await supabase.from('approval_workflow').insert([{
-      research_id: id, reviewer_id: req.user.id, reviewer_role: req.user.role, status: 'rejected', comments: reason
-    }]);
+    if (fetchError || !paper) {
+      return res.status(404).json({ error: 'Paper not found' });
+    }
+    
+    const { error: updateError } = await supabase
+      .from('research_papers')
+      .update({ status: 'rejected', rejection_reason: reason })
+      .eq('id', id);
+    
+    if (updateError) {
+      console.error('Reject update error:', updateError);
+      return res.status(500).json({ error: 'Failed to reject paper' });
+    }
+    
+    // Try to insert into approval_workflow if table exists
+    try {
+      await supabase.from('approval_workflow').insert([{
+        research_id: id, 
+        reviewer_id: req.user.id, 
+        reviewer_role: req.user.role, 
+        status: 'rejected', 
+        comments: reason
+      }]);
+    } catch (workflowError) {
+      console.log('Approval workflow insert skipped:', workflowError.message);
+    }
 
-    res.json({ message: 'Research rejected' });
+    res.json({ message: 'Research rejected successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('Reject research error:', error);
+    res.status(500).json({ error: 'Server error', details: error.message });
   }
 };
 
@@ -530,16 +606,75 @@ exports.requestRevision = async (req, res) => {
   try {
     const { id } = req.params;
     const { notes } = req.body;
+    const reviewerRole = req.user.role;
+    
+    console.log('=== BACKEND: Request Revision ===');
+    console.log('Paper ID:', id);
+    console.log('Reviewer role:', reviewerRole);
+    console.log('Revision notes:', notes);
+    
     if (!notes) return res.status(400).json({ error: 'Revision notes are required' });
 
-    await supabase.from('research_papers').update({ status: 'revision_required', revision_notes: notes }).eq('id', id);
-    await supabase.from('approval_workflow').insert([{
-      research_id: id, reviewer_id: req.user.id, reviewer_role: req.user.role, status: 'revision_required', comments: notes
-    }]);
+    // Get current paper to check its status
+    const { data: paper, error: fetchError } = await supabase
+      .from('research_papers')
+      .select('status, faculty_id')
+      .eq('id', id)
+      .single();
 
-    res.json({ message: 'Revision requested' });
+    if (fetchError || !paper) {
+      console.error('Paper not found:', fetchError);
+      return res.status(404).json({ error: 'Paper not found' });
+    }
+
+    console.log('Current paper status:', paper.status);
+
+    // Update to revision_required and store which role requested it
+    const updateData = { 
+      status: 'revision_required', 
+      revision_notes: notes
+    };
+
+    // Try to store reviewer info (these columns might not exist, so we'll try)
+    try {
+      updateData.last_reviewer_role = reviewerRole;
+      updateData.previous_status = paper.status;
+    } catch (e) {
+      console.log('Could not store reviewer tracking fields');
+    }
+
+    const { data: updatedPaper, error: updateError } = await supabase
+      .from('research_papers')
+      .update(updateData)
+      .eq('id', id)
+      .select();
+
+    if (updateError) {
+      console.error('Update error:', updateError);
+      return res.status(500).json({ error: 'Failed to update paper status', details: updateError.message });
+    }
+
+    console.log('Paper updated successfully:', updatedPaper);
+    
+    // Try to insert into approval_workflow if table exists
+    try {
+      await supabase.from('approval_workflow').insert([{
+        research_id: id, 
+        reviewer_id: req.user.id, 
+        reviewer_role: reviewerRole, 
+        status: 'revision_required', 
+        comments: notes
+      }]);
+    } catch (workflowError) {
+      console.log('Approval workflow insert skipped:', workflowError.message);
+    }
+
+    res.json({ message: 'Revision requested successfully', newStatus: 'revision_required' });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('=== REQUEST REVISION ERROR ===');
+    console.error('Error message:', error.message);
+    console.error('Full error:', error);
+    res.status(500).json({ error: 'Server error', details: error.message });
   }
 };
 

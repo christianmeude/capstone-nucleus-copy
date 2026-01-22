@@ -205,6 +205,15 @@ const SubmitResearch = () => {
                 Updating: "{resubmitData.title}"
               </div>
             )}
+            {resubmitData?.revision_notes && (
+              <div className="mt-4 p-4 rounded-xl bg-orange-50 border border-orange-200">
+                <p className="text-sm font-bold text-orange-800 mb-2 flex items-center gap-2">
+                  <AlertCircle size={16} />
+                  Reviewer's Revision Notes:
+                </p>
+                <p className="text-sm text-orange-700">{resubmitData.revision_notes}</p>
+              </div>
+            )}
           </div>
           <div className="hidden md:block">
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 text-green-700 text-sm font-semibold">

@@ -122,13 +122,23 @@ const ReviewDetail = () => {
     }
     setActionLoading(true);
     try {
-      await researchAPI.requestRevision(id, revisionNotes);
+      console.log('=== Requesting Revision ===');
+      console.log('Paper ID:', id);
+      console.log('User role:', user?.role);
+      console.log('Current paper status:', paper?.status);
+      console.log('Revision notes:', revisionNotes);
+      
+      const response = await researchAPI.requestRevision(id, revisionNotes);
+      console.log('Revision request response:', response.data);
+      
       alert('Revision requested successfully');
       // Navigate based on user role
       const reviewPath = user?.role === 'faculty' ? '/faculty/review' : 
                         user?.role === 'admin' ? '/admin/papers' : '/staff/review';
       navigate(reviewPath);
     } catch (error) {
+      console.error('Failed to request revision:', error);
+      console.error('Error response:', error.response?.data);
       alert(error.response?.data?.error || 'Failed to request revision');
     } finally {
       setActionLoading(false);

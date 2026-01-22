@@ -46,7 +46,13 @@ const MyResearch = () => {
     if (!silent) setRefreshing(true);
     try {
       const response = await researchAPI.getMyResearch();
-      setPapers(response.data.papers);
+      const fetchedPapers = response.data.papers;
+      
+      console.log('=== STUDENT: Fetched papers ===', fetchedPapers.length);
+      console.log('Papers with revision_required:', fetchedPapers.filter(p => p.status === 'revision_required'));
+      console.log('All paper statuses:', fetchedPapers.map(p => ({ title: p.title, status: p.status })));
+      
+      setPapers(fetchedPapers);
       setError('');
     } catch (err) {
       if (!silent) {
@@ -69,6 +75,33 @@ const MyResearch = () => {
         badge: 'bg-gradient-to-r from-yellow-500 to-amber-500',
         badgeColor: 'text-yellow-700',
         bgColor: 'bg-yellow-50'
+      },
+      pending_faculty: {
+        color: 'from-purple-100 to-purple-50 border-purple-200',
+        text: 'text-purple-800',
+        icon: Eye,
+        label: 'With Faculty Reviewer',
+        badge: 'bg-gradient-to-r from-purple-500 to-pink-500',
+        badgeColor: 'text-purple-700',
+        bgColor: 'bg-purple-50'
+      },
+      pending_editor: {
+        color: 'from-blue-100 to-blue-50 border-blue-200',
+        text: 'text-blue-800',
+        icon: Eye,
+        label: 'With Editor',
+        badge: 'bg-gradient-to-r from-blue-500 to-cyan-500',
+        badgeColor: 'text-blue-700',
+        bgColor: 'bg-blue-50'
+      },
+      pending_admin: {
+        color: 'from-indigo-100 to-indigo-50 border-indigo-200',
+        text: 'text-indigo-800',
+        icon: Shield,
+        label: 'With Admin',
+        badge: 'bg-gradient-to-r from-indigo-500 to-purple-500',
+        badgeColor: 'text-indigo-700',
+        bgColor: 'bg-indigo-50'
       },
       under_review: {
         color: 'from-blue-100 to-blue-50 border-blue-200',
@@ -366,13 +399,21 @@ const MyResearch = () => {
                       
                       {(paper.status === 'rejected' || paper.status === 'revision_required') && (
                         <button
-                          onClick={() => navigate('/student/submit', { state: { resubmit: paper } })}
+                          onClick={() => {
+                            console.log('Resubmit clicked for paper:', paper.id, 'Status:', paper.status);
+                            navigate('/student/submit', { state: { resubmit: paper } });
+                          }}
                           className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-medium hover:from-indigo-700 hover:to-blue-700 transition-all duration-300 flex items-center gap-2 shadow-lg hover:shadow-xl"
                         >
                           <Edit3 size={16} />
                           {paper.status === 'revision_required' ? 'Edit & Resubmit' : 'Try Again'}
                         </button>
                       )}
+
+                      {/* Debug: Show current status */}
+                      <div className="text-xs text-slate-500 mt-2">
+                        Current DB Status: {paper.status}
+                      </div>
                     </div>
                   </div>
 
