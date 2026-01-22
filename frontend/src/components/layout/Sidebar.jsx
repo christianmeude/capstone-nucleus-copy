@@ -56,7 +56,7 @@ const Sidebar = () => {
   const location = useLocation();
 
   useEffect(() => {
-    if (user?.role === 'staff' || user?.role === 'admin') {
+    if (user?.role === 'staff' || user?.role === 'admin' || user?.role === 'faculty') {
       fetchBadgeStats();
       fetchNotifications();
       
@@ -71,16 +71,23 @@ const Sidebar = () => {
 
   const fetchBadgeStats = async () => {
     try {
-      const response = await researchAPI.getAllResearch();
-      const papers = response.data.papers;
-      
-      const staffCount = papers.filter(p => p.status === 'pending' || p.status === 'under_review').length;
-      const adminCount = papers.filter(p => p.status === 'under_review').length;
-      
-      setStats({
-        staffPending: staffCount,
-        adminPending: adminCount
-      });
+      if (user?.role === 'faculty') {
+        const response = await researchAPI.getFacultyAssignedPapers();
+        const papers = response.data.papers;
+        const pendingCount = papers.filter(p => p.status === 'pending_faculty').length;
+        setStats({ facultyPending: pendingCount });
+      } else {
+        const response = await researchAPI.getAllResearch();
+        const papers = response.data.papers;
+        
+        const staffCount = papers.filter(p => p.status === 'pending_editor' || p.status === 'under_review').length;
+        const adminCount = papers.filter(p => p.status === 'pending_admin' || p.status === 'under_review').length;
+        
+        setStats({
+          staffPending: staffCount,
+          adminPending: adminCount
+        });
+      }
     } catch (error) {
       console.error('Failed to fetch sidebar stats:', error);
     }
@@ -112,16 +119,22 @@ const Sidebar = () => {
         icon: Shield,
         name: 'Administrator'
       },
-      staff: {
-        color: 'from-purple-500 to-violet-500',
+      faculty: {
+        color: 'from-purple-500 to-indigo-500',
         badgeColor: 'bg-purple-100 text-purple-700 border-purple-200',
+        icon: GraduationCap,
+        name: 'Faculty Member'
+      },
+      staff: {
+        color: 'from-violet-500 to-purple-500',
+        badgeColor: 'bg-violet-100 text-violet-700 border-violet-200',
         icon: Award,
-        name: 'Faculty Staff'
+        name: 'Editor Staff'
       },
       student: {
         color: 'from-blue-500 to-cyan-500',
         badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
-        icon: GraduationCap,
+        icon: BookOpen,
         name: 'Student Scholar'
       }
     };
@@ -201,6 +214,36 @@ const Sidebar = () => {
         path: '/staff/settings',
         badge: null,
         description: 'Preferences'
+      },
+    ],
+    faculty: [
+      { 
+        name: 'Dashboard', 
+        icon: LayoutDashboard, 
+        path: '/dashboard',
+        badge: null,
+        description: 'Overview'
+      },
+      { 
+        name: 'Review Submissions', 
+        icon: FileCheck, 
+        path: '/faculty/review',
+        badge: stats.facultyPending > 0 ? stats.facultyPending : null,
+        description: 'Review assigned papers'
+      },
+      { 
+        name: 'Browse Repository', 
+        icon: Search, 
+        path: '/student/browse',
+        badge: null,
+        description: 'Explore papers'
+      },
+      { 
+        name: 'Profile', 
+        icon: User, 
+        path: '/faculty/profile',
+        badge: null,
+        description: 'Account settings'
       },
     ],
     student: [

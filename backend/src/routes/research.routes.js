@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const researchController = require('../controllers/research.controller');
-const { authenticate, authorize } = require('../middleware/auth.middleware');
+const { authenticate, authorize, isFaculty, isStaffOrAdmin } = require('../middleware/auth.middleware');
 
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
@@ -23,6 +23,9 @@ const upload = multer({
 // ========== PUBLIC ROUTES ==========
 router.get('/published', researchController.getPublishedResearch);
 router.get('/categories', researchController.getCategories);
+
+// Get faculty members (for student submission)
+router.get('/faculty/members', authenticate, researchController.getFacultyMembers);
 
 // ========== AUTHENTICATED USER ROUTES ==========
 router.get('/:id', authenticate, researchController.getResearchById);
@@ -56,22 +59,30 @@ router.get(
 router.post(
   '/:id/approve',
   authenticate,
-  authorize('staff', 'admin'),
+  authorize('faculty', 'staff', 'admin'),
   researchController.approveResearch
 );
 
 router.post(
   '/:id/reject',
   authenticate,
-  authorize('staff', 'admin'),
+  authorize('faculty', 'staff', 'admin'),
   researchController.rejectResearch
 );
 
 router.post(
   '/:id/revision',
   authenticate,
-  authorize('staff', 'admin'),
+  authorize('faculty', 'staff', 'admin'),
   researchController.requestRevision
+);
+
+// ========== FACULTY ROUTES ==========
+router.get(
+  '/faculty/assigned',
+  authenticate,
+  authorize('faculty'),
+  researchController.getFacultyAssignedPapers
 );
 
 // ========== ADMIN ONLY ROUTES ==========

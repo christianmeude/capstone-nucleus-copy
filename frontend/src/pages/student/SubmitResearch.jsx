@@ -10,6 +10,7 @@ import {
   BookOpen,
   Tag,
   Users,
+  User,
   FolderOpen,
   PenTool,
   Sparkles,
@@ -29,6 +30,7 @@ const SubmitResearch = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [categories, setCategories] = useState([]);
+  const [facultyMembers, setFacultyMembers] = useState([]);
   const [file, setFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   
@@ -37,19 +39,33 @@ const SubmitResearch = () => {
     abstract: resubmitData?.abstract || '',
     keywords: resubmitData?.keywords?.join(', ') || '',
     coAuthors: resubmitData?.co_authors || '',
-    category: resubmitData?.category || ''
+    category: resubmitData?.category || '',
+    facultyId: resubmitData?.faculty_id || '',
+    department: resubmitData?.department || ''
   });
 
   useEffect(() => {
     fetchCategories();
+    fetchFacultyMembers();
   }, []);
 
   const fetchCategories = async () => {
     try {
       const response = await researchAPI.getCategories();
-      setCategories(response.data.categories);
+      setCategories(response.data.categories || []);
     } catch (err) {
       console.error('Failed to fetch categories:', err);
+      setCategories([]); // Set empty array on error
+    }
+  };
+
+  const fetchFacultyMembers = async () => {
+    try {
+      const response = await researchAPI.getFacultyMembers();
+      setFacultyMembers(response.data.facultyMembers || []);
+    } catch (err) {
+      console.error('Failed to fetch faculty members:', err);
+      setFacultyMembers([]); // Set empty array on error
     }
   };
 
@@ -107,6 +123,11 @@ const SubmitResearch = () => {
       return;
     }
 
+    // Make faculty optional for testing - just warn if not selected
+    if (!formData.facultyId && !resubmitData) {
+      console.warn('No faculty advisor selected - submission will proceed without faculty assignment');
+    }
+
     setLoading(true);
     simulateUploadProgress(); // Start progress simulation
 
@@ -126,6 +147,8 @@ const SubmitResearch = () => {
       submitData.append('keywords', formData.keywords);
       submitData.append('coAuthors', formData.coAuthors);
       submitData.append('category', formData.category);
+      submitData.append('facultyId', formData.facultyId);
+      submitData.append('department', formData.department);
 
       await researchAPI.submitResearch(submitData);
       
@@ -134,7 +157,10 @@ const SubmitResearch = () => {
         navigate('/student/my-research');
       }, 2000);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to submit research');
+      console.error('Submission error:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Failed to submit research';
+      setError(errorMessage);
+      console.error('Full error details:', err.response?.data || err);
     } finally {
       setLoading(false);
       setUploadProgress(0);
@@ -399,6 +425,66 @@ const SubmitResearch = () => {
               </div>
             </div>
             <p className="text-sm text-slate-500">Choose the most relevant category for your research</p>
+          </div>
+
+          {/* Faculty Advisor Selection */}
+          <div className="space-y-3">
+            <label htmlFor="facultyId" className="block text-lg font-bold text-slate-900">
+              Faculty Advisor <span className="text-amber-500 text-sm">(Optional for testing)</span>
+            </label>
+            <div className="relative">
+              <select
+                id="facultyId"
+                name="facultyId"
+                value={formData.facultyId}
+                onChange={handleChange}
+                className="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300 appearance-none font-medium shadow-sm hover:border-slate-400"
+              >
+                <option value="">Select your faculty advisor (optional)</option>
+                {facultyMembers && facultyMembers.length > 0 ? (
+                  facultyMembers.map((faculty) => (
+                    <option key={faculty.id} value={faculty.id} className="text-slate-900">
+                      {faculty.full_name} {faculty.department ? `(${faculty.department})` : ''}
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled className="text-slate-400">No faculty members available</option>
+                )}
+              </select>
+              <div className="absolute right-6 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                <User size={20} className="text-slate-400" />
+              </div>
+            </div>
+            {facultyMembers && facultyMembers.length === 0 && (
+              <p className="text-sm text-amber-600">
+                ⚠️ No faculty members found. You can still submit without a faculty advisor.
+              </p>
+            )}
+            {facultyMembers && facultyMembers.length > 0 && (
+              <p className="text-sm text-slate-500">Your faculty advisor will be the first to review your submission</p>
+            )}
+          </div>
+
+          {/* Department (Optional) */}
+          <div className="space-y-3">
+            <label htmlFor="department" className="block text-lg font-bold text-slate-900">
+              Department (Optional)
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                id="department"
+                name="department"
+                value={formData.department}
+                onChange={handleChange}
+                className="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300 font-medium shadow-sm hover:border-slate-400"
+                placeholder="e.g., Computer Science, Engineering"
+              />
+              <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                <FolderOpen size={20} className="text-slate-400" />
+              </div>
+            </div>
+            <p className="text-sm text-slate-500">Specify your academic department if applicable</p>
           </div>
 
           {/* Keywords */}

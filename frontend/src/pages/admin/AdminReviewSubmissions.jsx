@@ -35,6 +35,7 @@ const AdminReviewSubmissions = () => {
   const [stats, setStats] = useState({
     pending: 0,
     underReview: 0,
+    pendingAdmin: 0,
     approved: 0,
     rejected: 0,
     revisionRequired: 0,
@@ -61,12 +62,21 @@ const AdminReviewSubmissions = () => {
       const response = await researchAPI.getAllResearch();
       const allPapers = response.data.papers;
       
+      console.log('=== ADMIN: All papers fetched ===', allPapers.length);
+      console.log('Status breakdown:', {
+        pending_admin: allPapers.filter(p => p.status === 'pending_admin').length,
+        under_review: allPapers.filter(p => p.status === 'under_review').length,
+        approved: allPapers.filter(p => p.status === 'approved').length,
+      });
+      console.log('Papers with pending_admin:', allPapers.filter(p => p.status === 'pending_admin'));
+      
       setPapers(allPapers);
       
       // Calculate stats
       setStats({
         pending: allPapers.filter(p => p.status === 'pending').length,
         underReview: allPapers.filter(p => p.status === 'under_review').length,
+        pendingAdmin: allPapers.filter(p => p.status === 'pending_admin').length,
         approved: allPapers.filter(p => p.status === 'approved').length,
         rejected: allPapers.filter(p => p.status === 'rejected').length,
         revisionRequired: allPapers.filter(p => p.status === 'revision_required').length,
@@ -85,7 +95,13 @@ const AdminReviewSubmissions = () => {
     if (statusFilter === 'all') {
       filtered = papers;
     } else if (statusFilter === 'needs_action') {
-      filtered = papers.filter(p => p.status === 'pending' || p.status === 'under_review');
+      filtered = papers.filter(p => 
+        p.status === 'pending' || 
+        p.status === 'under_review' || 
+        p.status === 'pending_admin'
+      );
+    } else if (statusFilter === 'pending_admin') {
+      filtered = papers.filter(p => p.status === 'pending_admin');
     } else {
       filtered = papers.filter(p => p.status === statusFilter);
     }
@@ -232,10 +248,10 @@ const AdminReviewSubmissions = () => {
             change: null 
           },
           { 
-            label: 'Awaiting Approval', 
-            value: stats.underReview, 
+            label: 'Awaiting Admin Approval', 
+            value: stats.pendingAdmin, 
             icon: Eye, 
-            color: 'from-blue-500 to-cyan-500',
+            color: 'from-purple-500 to-indigo-500',
             change: null 
           },
           { 
@@ -302,8 +318,9 @@ const AdminReviewSubmissions = () => {
         <div className="p-6">
           <div className="flex flex-wrap gap-3">
             {[
-              { key: 'under_review', label: 'Awaiting Final Approval', count: stats.underReview, color: 'blue' },
-              { key: 'needs_action', label: 'Needs Action', count: stats.pending + stats.underReview, color: 'indigo' },
+              { key: 'pending_admin', label: 'Awaiting Admin Approval', count: stats.pendingAdmin, color: 'purple' },
+              { key: 'needs_action', label: 'Needs Action', count: stats.pending + stats.underReview + stats.pendingAdmin, color: 'indigo' },
+              { key: 'under_review', label: 'Under Review', count: stats.underReview, color: 'blue' },
               { key: 'pending', label: 'Pending Staff Review', count: stats.pending, color: 'amber' },
               { key: 'approved', label: 'Published', count: stats.approved, color: 'emerald' },
               { key: 'rejected', label: 'Rejected', count: stats.rejected, color: 'red' },

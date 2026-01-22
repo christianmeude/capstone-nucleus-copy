@@ -58,7 +58,11 @@ const StaffDashboard = () => {
       const papers = researchRes.data.papers;
 
       // Calculate statistics
-      const pendingCount = papers.filter(p => p.status === 'pending' || p.status === 'under_review').length;
+      const pendingCount = papers.filter(p => 
+        p.status === 'pending' || 
+        p.status === 'under_review' || 
+        p.status === 'pending_editor'
+      ).length;
       const reviewedCount = papers.filter(p => p.status === 'approved' || p.status === 'rejected').length;
       const approvedCount = papers.filter(p => p.status === 'approved').length;
       

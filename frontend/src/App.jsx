@@ -7,10 +7,12 @@ import Sidebar from './components/layout/Sidebar';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StaffDashboard from './pages/staff/StaffDashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import FacultyDashboard from './pages/faculty/FacultyDashboard';
 import SubmitResearch from './pages/student/SubmitResearch';
 import MyResearch from './pages/student/MyResearch';
 import BrowseRepository from './pages/student/BrowseRepository';
 import ReviewSubmissions from './pages/staff/ReviewSubmissions';
+import FacultyReview from './pages/faculty/FacultyReview';
 import ReviewDetail from './pages/staff/ReviewDetail';
 import AdminReviewSubmissions from './pages/admin/AdminReviewSubmissions';
 
@@ -59,6 +61,8 @@ const DashboardRouter = () => {
   switch (user.role) {
     case 'student':
       return <StudentDashboard />;
+    case 'faculty':
+      return <FacultyDashboard />;
     case 'staff':
       return <StaffDashboard />;
     case 'admin':
@@ -120,8 +124,20 @@ function App() {
             
             {/* Research Detail View - Accessible to all authenticated users */}
             <Route path="/research/:id" element={
-              <ProtectedRoute allowedRoles={['student', 'staff', 'admin']}>
+              <ProtectedRoute allowedRoles={['student', 'faculty', 'staff', 'admin']}>
                 <ResearchDetail />
+              </ProtectedRoute>
+            } />
+
+            {/* Faculty Specific Routes */}
+            <Route path="/faculty/review" element={
+              <ProtectedRoute allowedRoles={['faculty']}>
+                <FacultyReview />
+              </ProtectedRoute>
+            } />
+            <Route path="/faculty/review/:id" element={
+              <ProtectedRoute allowedRoles={['faculty', 'admin']}>
+                <ReviewDetail />
               </ProtectedRoute>
             } />
 

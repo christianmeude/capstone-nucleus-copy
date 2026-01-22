@@ -69,16 +69,35 @@ const ReviewSubmissions = () => {
       const response = await researchAPI.getAllResearch();
       const allPapers = response.data.papers;
       
+      console.log('=== STAFF: All papers fetched ===', allPapers.length);
+      console.log('Status breakdown:', {
+        pending_faculty: allPapers.filter(p => p.status === 'pending_faculty').length,
+        pending_editor: allPapers.filter(p => p.status === 'pending_editor').length,
+        pending_admin: allPapers.filter(p => p.status === 'pending_admin').length,
+        approved: allPapers.filter(p => p.status === 'approved').length,
+      });
+      console.log('Papers with pending_editor:', allPapers.filter(p => p.status === 'pending_editor'));
+      
       setPapers(allPapers);
       
-      // Calculate comprehensive stats
+      // Calculate comprehensive stats - filter for papers at editor stage
+      const editorStagePapers = allPapers.filter(p => 
+        p.status === 'pending_editor' || 
+        p.status === 'pending_admin' ||
+        p.status === 'under_review' ||
+        p.status === 'approved' ||
+        p.status === 'rejected' ||
+        p.status === 'revision_required' ||
+        p.status === 'pending' // Legacy papers without faculty assignment
+      );
+      
       const statsData = {
-        pending: allPapers.filter(p => p.status === 'pending').length,
-        underReview: allPapers.filter(p => p.status === 'under_review').length,
-        needsReview: allPapers.filter(p => p.status === 'pending' || p.status === 'under_review').length,
-        approved: allPapers.filter(p => p.status === 'approved').length,
-        rejected: allPapers.filter(p => p.status === 'rejected').length,
-        revisionRequired: allPapers.filter(p => p.status === 'revision_required').length
+        pending: editorStagePapers.filter(p => p.status === 'pending').length,
+        underReview: editorStagePapers.filter(p => p.status === 'under_review').length,
+        needsReview: editorStagePapers.filter(p => p.status === 'pending_editor' || p.status === 'under_review').length,
+        approved: editorStagePapers.filter(p => p.status === 'approved').length,
+        rejected: editorStagePapers.filter(p => p.status === 'rejected').length,
+        revisionRequired: editorStagePapers.filter(p => p.status === 'revision_required').length
       };
       
       setStats(statsData);
@@ -93,11 +112,22 @@ const ReviewSubmissions = () => {
   const filterAndSearchPapers = () => {
     let filtered = [...papers];
     
-    // Apply status filter
+    console.log('=== STAFF: Filtering papers ===');
+    console.log('Total papers before filter:', papers.length);
+    console.log('Current statusFilter:', statusFilter);
+    
+    // Apply status filter - Staff should only see papers that passed faculty review
     if (statusFilter === 'needs_review') {
-      filtered = papers.filter(p => p.status === 'pending' || p.status === 'under_review');
+      // Staff sees papers that are pending_editor or under_review (for legacy papers)
+      filtered = papers.filter(p => p.status === 'pending_editor' || p.status === 'under_review');
+      console.log('Filtered for needs_review:', filtered.length);
     } else if (statusFilter !== 'all') {
       filtered = papers.filter(p => p.status === statusFilter);
+      console.log('Filtered for specific status:', statusFilter, filtered.length);
+    } else {
+      // For 'all' filter, staff should only see papers at editor stage or beyond (exclude pending_faculty)
+      filtered = papers.filter(p => p.status !== 'pending_faculty');
+      console.log('Filtered for all (excluding pending_faculty):', filtered.length);
     }
 
     // Apply search filter
@@ -145,6 +175,30 @@ const ReviewSubmissions = () => {
         label: 'Pending Review',
         badge: 'bg-gradient-to-r from-yellow-500 to-amber-500',
         priority: 'high'
+      },
+      pending_faculty: {
+        color: 'from-purple-100 to-pink-50 border-purple-200',
+        text: 'text-purple-800',
+        icon: Clock,
+        label: 'With Faculty',
+        badge: 'bg-gradient-to-r from-purple-500 to-pink-500',
+        priority: 'medium'
+      },
+      pending_editor: {
+        color: 'from-blue-100 to-cyan-50 border-blue-200',
+        text: 'text-blue-800',
+        icon: Eye,
+        label: 'Awaiting Editor Review',
+        badge: 'bg-gradient-to-r from-blue-500 to-cyan-500',
+        priority: 'high'
+      },
+      pending_admin: {
+        color: 'from-indigo-100 to-purple-50 border-indigo-200',
+        text: 'text-indigo-800',
+        icon: AlertCircle,
+        label: 'With Admin',
+        badge: 'bg-gradient-to-r from-indigo-500 to-purple-500',
+        priority: 'medium'
       },
       under_review: {
         color: 'from-blue-100 to-cyan-50 border-blue-200',

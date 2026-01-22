@@ -31,3 +31,19 @@ exports.authorize = (...allowedRoles) => {
     next();
   };
 };
+
+// Faculty role check helper
+exports.isFaculty = (req, res, next) => {
+  if (!req.user || req.user.role !== 'faculty') {
+    return res.status(403).json({ error: 'Faculty access required' });
+  }
+  next();
+};
+
+// Staff or Admin check helper
+exports.isStaffOrAdmin = (req, res, next) => {
+  if (!req.user || !['staff', 'admin'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Staff or Admin access required' });
+  }
+  next();
+};

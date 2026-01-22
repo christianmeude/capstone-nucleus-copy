@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 // Submit new research or update existing revision
 exports.submitResearch = async (req, res) => {
   try {
-    const { id, title, abstract, keywords, coAuthors, category } = req.body;
+    const { id, title, abstract, keywords, coAuthors, category, facultyId, department } = req.body;
     const file = req.file;
     const userId = req.user.id;
 
@@ -55,7 +55,10 @@ exports.submitResearch = async (req, res) => {
         co_authors: coAuthors || null,
         category,
         author_id: userId,
-        status: 'pending', 
+        faculty_id: facultyId || null,
+        department: department || null,
+        // If faculty is assigned, use new workflow (pending_faculty), otherwise use legacy workflow (pending)
+        status: id ? undefined : (facultyId ? 'pending_faculty' : 'pending'), 
         ...fileData 
       })
       .select()
@@ -72,21 +75,35 @@ exports.submitResearch = async (req, res) => {
       .eq('id', userId)
       .single();
 
-    const { data: staffUsers } = await supabase
-      .from('users')
-      .select('id')
-      .eq('role', 'staff');
-
-    if (staffUsers && staffUsers.length > 0) {
-      const notifications = staffUsers.map(staff => ({
-        user_id: staff.id,
+    // Notify the assigned faculty member for new submissions
+    if (!id && facultyId) {
+      await supabase.from('notifications').insert([{
+        user_id: facultyId,
         research_id: research.id,
         type: 'submission',
-        title: id ? 'Research Revised' : 'New Research Submission',
-        message: `${author?.full_name || author?.email} ${id ? 'resubmitted' : 'submitted'} "${title}" for review`
-      }));
+        title: 'New Research Submission',
+        message: `${author?.full_name || author?.email} submitted "${title}" for your review`
+      }]);
+    }
+    
+    // Notify staff for revisions or if no faculty assigned (legacy flow)
+    if (id || !facultyId) {
+      const { data: staffUsers } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'staff');
 
-      await supabase.from('notifications').insert(notifications);
+      if (staffUsers && staffUsers.length > 0) {
+        const notifications = staffUsers.map(staff => ({
+          user_id: staff.id,
+          research_id: research.id,
+          type: 'submission',
+          title: id ? 'Research Revised' : 'New Research Submission',
+          message: `${author?.full_name || author?.email} ${id ? 'resubmitted' : 'submitted'} "${title}" for review`
+        }));
+
+        await supabase.from('notifications').insert(notifications);
+      }
     }
 
     res.status(id ? 200 : 201).json({
@@ -341,7 +358,7 @@ exports.adminUnpublishResearch = async (req, res) => {
   }
 };
 
-// Approve research
+// Approve research - Updated for sequential workflow
 exports.approveResearch = async (req, res) => {
   try {
     const { id } = req.params;
@@ -358,31 +375,133 @@ exports.approveResearch = async (req, res) => {
     if (fetchError || !paper) return res.status(404).json({ error: 'Research paper not found' });
 
     let newStatus;
-    if (reviewerRole === 'staff' && paper.status === 'pending') {
-      newStatus = 'under_review';
-    } else if (reviewerRole === 'admin' && paper.status === 'under_review') {
+    let notificationMessage;
+    let nextReviewers = [];
+
+    // Sequential approval workflow: Faculty -> Editor (Staff) -> Admin
+    if (reviewerRole === 'faculty' && paper.status === 'pending_faculty') {
+      // Faculty approves: move to Editor review
+      newStatus = 'pending_editor';
+      notificationMessage = 'Your research has been approved by faculty and is now under editor review';
+      
+      // Notify all editors/staff
+      const { data: staffUsers } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'staff');
+      
+      if (staffUsers) {
+        nextReviewers = staffUsers.map(staff => staff.id);
+      }
+    } else if (reviewerRole === 'staff' && paper.status === 'pending_editor') {
+      // Editor approves: move to Admin review
+      newStatus = 'pending_admin';
+      notificationMessage = 'Your research has been approved by the editor and is awaiting final admin approval';
+      
+      // Notify all admins
+      const { data: adminUsers } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'admin');
+      
+      if (adminUsers) {
+        nextReviewers = adminUsers.map(admin => admin.id);
+      }
+    } else if (reviewerRole === 'admin' && (paper.status === 'pending_admin' || paper.status === 'under_review')) {
+      // Admin final approval: publish
       newStatus = 'approved';
+      notificationMessage = 'Congratulations! Your research has been approved and published';
     } else {
-      return res.status(400).json({ error: 'Invalid approval workflow' });
+      return res.status(400).json({ 
+        error: 'Invalid approval workflow. Please check the paper status and your role.',
+        currentStatus: paper.status,
+        yourRole: reviewerRole 
+      });
     }
 
-    await supabase.from('research_papers').update({ 
+    console.log('=== BACKEND: Approval Process ===');
+    console.log('Paper ID:', id);
+    console.log('Current status:', paper.status);
+    console.log('Reviewer role:', reviewerRole);
+    console.log('New status:', newStatus);
+
+    // Update paper status
+    const { data: updateData, error: updateError } = await supabase
+      .from('research_papers')
+      .update({ 
+        status: newStatus,
+        published_date: newStatus === 'approved' ? new Date().toISOString() : null
+      })
+      .eq('id', id)
+      .select();
+
+    if (updateError) {
+      console.error('Database update error:', updateError);
+      return res.status(500).json({ error: 'Failed to update paper status', details: updateError });
+    }
+
+    console.log('Update successful. Updated paper:', updateData);
+
+    // Record approval in workflow (optional - skip if table doesn't exist)
+    try {
+      await supabase.from('approval_workflow').insert([{
+        research_id: id, 
+        reviewer_id: reviewerId, 
+        reviewer_role: reviewerRole, 
+        status: 'approved', 
+        comments: comments || null
+      }]);
+    } catch (workflowError) {
+      console.log('Approval workflow table not available, skipping...', workflowError.message);
+    }
+
+    // Notify author (optional - skip if table doesn't exist)
+    try {
+      await supabase.from('notifications').insert([{
+        user_id: paper.author_id, 
+        research_id: id, 
+        type: 'approval', 
+        title: 'Research Approved', 
+        message: notificationMessage
+      }]);
+    } catch (notifError) {
+      console.log('Notifications table not available, skipping...', notifError.message);
+    }
+
+    // Notify next reviewers in the workflow (optional)
+    if (nextReviewers.length > 0) {
+      try {
+        const nextNotifications = nextReviewers.map(reviewerId => ({
+          user_id: reviewerId,
+          research_id: id,
+          type: 'review_request',
+          title: 'New Research for Review',
+          message: `Research "${paper.title}" is ready for your review`
+        }));
+        
+        await supabase.from('notifications').insert(nextNotifications);
+      } catch (notifError) {
+        console.log('Could not send notifications to next reviewers:', notifError.message);
+      }
+    }
+
+    res.json({ 
+      message: 'Research approved successfully', 
       status: newStatus,
-      published_date: newStatus === 'approved' ? new Date().toISOString() : null
-    }).eq('id', id);
-
-    await supabase.from('approval_workflow').insert([{
-      research_id: id, reviewer_id: reviewerId, reviewer_role: reviewerRole, status: 'approved', comments: comments || null
-    }]);
-
-    await supabase.from('notifications').insert([{
-      user_id: paper.author_id, research_id: id, type: 'approval', title: 'Research Approved', message: `Your research status is now: ${newStatus}`
-    }]);
-
-    res.json({ message: 'Research approved successfully', status: newStatus });
+      nextStage: newStatus === 'approved' ? 'Published' : 
+                 newStatus === 'pending_editor' ? 'Editor Review' :
+                 newStatus === 'pending_admin' ? 'Admin Review' : 'Unknown'
+    });
   } catch (error) {
-    console.error('Approve error:', error);
-    res.status(500).json({ error: 'Server error' });
+    console.error('=== APPROVE ERROR ===');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Full error:', error);
+    res.status(500).json({ 
+      error: 'Server error',
+      details: error.message,
+      type: error.name
+    });
   }
 };
 
@@ -450,6 +569,58 @@ exports.getCategories = async (req, res) => {
     if (error) throw error;
     res.json({ categories });
   } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Get faculty members (for student to select during submission)
+exports.getFacultyMembers = async (req, res) => {
+  try {
+    const { department } = req.query;
+    
+    let query = supabase
+      .from('users')
+      .select('id, full_name, email, department')
+      .eq('role', 'faculty')
+      .order('full_name');
+    
+    if (department) {
+      query = query.eq('department', department);
+    }
+
+    const { data: facultyMembers, error } = await query;
+    if (error) throw error;
+    
+    res.json({ facultyMembers });
+  } catch (error) {
+    console.error('Get faculty members error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Get faculty assigned papers (for faculty dashboard)
+exports.getFacultyAssignedPapers = async (req, res) => {
+  try {
+    const facultyId = req.user.id;
+    const { status } = req.query;
+    
+    let query = supabase
+      .from('research_papers')
+      .select(`*, author:users!author_id (id, full_name, email)`)
+      .eq('faculty_id', facultyId)
+      .order('submission_date', { ascending: false });
+
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    const { data: papers, error } = await query;
+    if (error) throw error;
+
+    const transformedPapers = papers.map(paper => ({ ...paper, users: paper.author }));
+    res.json({ papers: transformedPapers });
+  } catch (error) {
+    console.error('Get faculty papers error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };

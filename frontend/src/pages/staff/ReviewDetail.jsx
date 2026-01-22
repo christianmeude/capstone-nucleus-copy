@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   ArrowLeft, 
   FileText, 
@@ -29,6 +30,7 @@ import { researchAPI } from '../../utils/api';
 const ReviewDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [paper, setPaper] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -41,6 +43,13 @@ const ReviewDetail = () => {
 
   useEffect(() => {
     fetchPaperDetail();
+    
+    // Auto-refresh every 10 seconds for real-time updates
+    const interval = setInterval(() => {
+      fetchPaperDetail();
+    }, 10000);
+    
+    return () => clearInterval(interval);
   }, [id]);
 
   const fetchPaperDetail = async () => {
@@ -61,10 +70,23 @@ const ReviewDetail = () => {
     }
     setActionLoading(true);
     try {
-      await researchAPI.approveResearch(id, comments);
+      console.log('=== Approving paper ===');
+      console.log('Paper ID:', id);
+      console.log('User role:', user?.role);
+      console.log('Current paper status:', paper?.status);
+      console.log('Comments:', comments);
+      
+      const response = await researchAPI.approveResearch(id, comments);
+      console.log('Approval response:', response.data);
+      
       alert('Research approved successfully!');
-      navigate('/staff/review');
+      // Navigate based on user role
+      const reviewPath = user?.role === 'faculty' ? '/faculty/review' : 
+                        user?.role === 'admin' ? '/admin/papers' : '/staff/review';
+      navigate(reviewPath);
     } catch (error) {
+      console.error('Failed to approve paper:', error);
+      console.error('Error response:', error.response?.data);
       alert(error.response?.data?.error || 'Failed to approve research');
     } finally {
       setActionLoading(false);
@@ -81,7 +103,10 @@ const ReviewDetail = () => {
     try {
       await researchAPI.rejectResearch(id, rejectionReason);
       alert('Research rejected');
-      navigate('/staff/review');
+      // Navigate based on user role
+      const reviewPath = user?.role === 'faculty' ? '/faculty/review' : 
+                        user?.role === 'admin' ? '/admin/papers' : '/staff/review';
+      navigate(reviewPath);
     } catch (error) {
       alert(error.response?.data?.error || 'Failed to reject research');
     } finally {
@@ -99,7 +124,10 @@ const ReviewDetail = () => {
     try {
       await researchAPI.requestRevision(id, revisionNotes);
       alert('Revision requested successfully');
-      navigate('/staff/review');
+      // Navigate based on user role
+      const reviewPath = user?.role === 'faculty' ? '/faculty/review' : 
+                        user?.role === 'admin' ? '/admin/papers' : '/staff/review';
+      navigate(reviewPath);
     } catch (error) {
       alert(error.response?.data?.error || 'Failed to request revision');
     } finally {
@@ -121,6 +149,18 @@ const ReviewDetail = () => {
       pending: {
         badgeColor: 'bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-800 border-yellow-200',
         icon: Clock, label: 'Pending Review'
+      },
+      pending_faculty: {
+        badgeColor: 'bg-gradient-to-r from-purple-100 to-pink-100 text-purple-800 border-purple-200',
+        icon: Clock, label: 'With Faculty'
+      },
+      pending_editor: {
+        badgeColor: 'bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-800 border-blue-200',
+        icon: Eye, label: 'Awaiting Editor Review'
+      },
+      pending_admin: {
+        badgeColor: 'bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800 border-indigo-200',
+        icon: Shield, label: 'Awaiting Admin Review'
       },
       under_review: {
         badgeColor: 'bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-800 border-blue-200',
@@ -155,15 +195,17 @@ const ReviewDetail = () => {
   }
 
   if (!paper) {
+    const backPath = user?.role === 'faculty' ? '/faculty/review' : 
+                     user?.role === 'admin' ? '/admin/papers' : '/staff/review';
     return (
       <div className="max-w-5xl mx-auto px-4 py-8">
-        <button onClick={() => navigate('/staff/review')} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-slate-100 to-white border border-slate-300 text-slate-700 hover:border-indigo-300 transition-colors mb-8">
+        <button onClick={() => navigate(backPath)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-slate-100 to-white border border-slate-300 text-slate-700 hover:border-indigo-300 transition-colors mb-8">
           <ArrowLeft size={18} /> Back to Review Queue
         </button>
         <div className="text-center py-16">
           <FileText size={40} className="text-slate-400 mx-auto mb-6" />
           <h2 className="text-2xl font-bold text-slate-900 mb-3">Research paper not found</h2>
-          <button onClick={() => navigate('/staff/review')} className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-xl font-bold">Return to Review Queue</button>
+          <button onClick={() => navigate(backPath)} className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-xl font-bold">Return to Review Queue</button>
         </div>
       </div>
     );
@@ -171,12 +213,49 @@ const ReviewDetail = () => {
 
   const statusConfig = getStatusConfig(paper.status);
   const StatusIcon = statusConfig.icon;
+  const backPath = user?.role === 'faculty' ? '/faculty/review' : 
+                   user?.role === 'admin' ? '/admin/papers' : '/staff/review';
+
+  // Workflow progress tracker
+  const getWorkflowStage = () => {
+    const stages = [
+      { key: 'faculty', label: 'Faculty Review', status: 'pending_faculty', completed: false },
+      { key: 'editor', label: 'Editor Review', status: 'pending_editor', completed: false },
+      { key: 'admin', label: 'Admin Review', status: 'pending_admin', completed: false },
+      { key: 'published', label: 'Published', status: 'approved', completed: false }
+    ];
+
+    let currentStageIndex = -1;
+    const paperStatus = paper.status;
+
+    // Mark completed stages
+    if (paperStatus === 'pending_editor' || paperStatus === 'pending_admin' || paperStatus === 'approved') {
+      stages[0].completed = true; // Faculty completed
+    }
+    if (paperStatus === 'pending_admin' || paperStatus === 'approved') {
+      stages[1].completed = true; // Editor completed
+    }
+    if (paperStatus === 'approved') {
+      stages[2].completed = true; // Admin completed
+      stages[3].completed = true; // Published
+    }
+
+    // Find current stage
+    if (paperStatus === 'pending_faculty') currentStageIndex = 0;
+    else if (paperStatus === 'pending_editor') currentStageIndex = 1;
+    else if (paperStatus === 'pending_admin') currentStageIndex = 2;
+    else if (paperStatus === 'approved') currentStageIndex = 3;
+
+    return { stages, currentStageIndex };
+  };
+
+  const { stages, currentStageIndex } = getWorkflowStage();
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <button onClick={() => navigate('/staff/review')} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-slate-100 to-white border border-slate-300 text-slate-700 hover:border-indigo-300 transition-colors mb-6 group">
+        <button onClick={() => navigate(backPath)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-slate-100 to-white border border-slate-300 text-slate-700 hover:border-indigo-300 transition-colors mb-6 group">
           <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
           Back to Review Queue
         </button>
@@ -202,6 +281,84 @@ const ReviewDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* Workflow Progress Indicator - Show for papers in sequential workflow */}
+      {(paper.faculty_id || 
+        paper.status.includes('pending_faculty') || 
+        paper.status.includes('pending_editor') || 
+        paper.status.includes('pending_admin') || 
+        paper.status === 'approved') && paper.status !== 'rejected' && (
+        <div className="mb-8 bg-gradient-to-br from-white to-slate-50 rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+              <BarChart3 size={20} className="text-indigo-600" />
+              Review Workflow Progress
+            </h3>
+          </div>
+          <div className="p-6">
+            <div className="relative">
+              {/* Progress Bar Background */}
+              <div className="absolute top-5 left-0 right-0 h-1 bg-slate-200 rounded-full" style={{ left: '24px', right: '24px' }}></div>
+              {/* Progress Bar Fill */}
+              <div 
+                className="absolute top-5 left-0 h-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full transition-all duration-500" 
+                style={{ 
+                  left: '24px', 
+                  width: currentStageIndex >= 0 ? `calc(${(currentStageIndex / (stages.length - 1)) * 100}% - 24px)` : '0%'
+                }}
+              ></div>
+              
+              {/* Stages */}
+              <div className="relative flex justify-between">
+                {stages.map((stage, index) => {
+                  const isCompleted = stage.completed;
+                  const isCurrent = index === currentStageIndex;
+                  const isPending = index > currentStageIndex;
+                  
+                  return (
+                    <div key={stage.key} className="flex flex-col items-center">
+                      {/* Circle */}
+                      <div className={`
+                        w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm
+                        transition-all duration-300 shadow-lg z-10
+                        ${isCompleted ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white' : ''}
+                        ${isCurrent ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white ring-4 ring-indigo-200 animate-pulse' : ''}
+                        ${isPending ? 'bg-white text-slate-400 border-2 border-slate-200' : ''}
+                      `}>
+                        {isCompleted ? <CheckCircle size={24} /> : 
+                         isCurrent ? <Clock size={24} className="animate-spin" style={{ animationDuration: '3s' }} /> : 
+                         index + 1}
+                      </div>
+                      
+                      {/* Label */}
+                      <div className="mt-3 text-center">
+                        <p className={`
+                          text-sm font-bold
+                          ${isCompleted ? 'text-green-700' : ''}
+                          ${isCurrent ? 'text-indigo-700' : ''}
+                          ${isPending ? 'text-slate-400' : ''}
+                        `}>
+                          {stage.label}
+                        </p>
+                        {isCurrent && (
+                          <p className="text-xs text-indigo-600 mt-1 font-medium animate-pulse">
+                            In Progress
+                          </p>
+                        )}
+                        {isCompleted && (
+                          <p className="text-xs text-green-600 mt-1 font-medium">
+                            Completed ✓
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column */}
@@ -300,8 +457,22 @@ const ReviewDetail = () => {
 
         {/* Right Column */}
         <div className="space-y-8">
-          {/* Action Buttons */}
-          {(paper.status === 'pending' || paper.status === 'under_review' || paper.status === 'revision_required') && (
+          {/* Action Buttons - Role-based visibility */}
+          {(() => {
+            const userRole = user?.role;
+            const paperStatus = paper.status;
+            
+            // Faculty can act on pending_faculty
+            if (userRole === 'faculty' && paperStatus === 'pending_faculty') return true;
+            
+            // Staff can act on pending_editor, pending (legacy), under_review, revision_required
+            if (userRole === 'staff' && (paperStatus === 'pending_editor' || paperStatus === 'pending' || paperStatus === 'under_review' || paperStatus === 'revision_required')) return true;
+            
+            // Admin can act on pending_admin, under_review, revision_required
+            if (userRole === 'admin' && (paperStatus === 'pending_admin' || paperStatus === 'under_review' || paperStatus === 'revision_required')) return true;
+            
+            return false;
+          })() && (
             <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center gap-3">
                 <FileCheck size={20} className="text-indigo-600" />

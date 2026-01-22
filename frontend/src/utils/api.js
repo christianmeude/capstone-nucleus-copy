@@ -54,6 +54,10 @@ export const researchAPI = {
   trackView: (id) => api.post(`/research/${id}/view`),
   trackDownload: (id) => api.post(`/research/${id}/download`),
   
+  // NEW: Faculty endpoints
+  getFacultyMembers: (department) => api.get('/research/faculty/members', { params: { department } }),
+  getFacultyAssignedPapers: (status) => api.get('/research/faculty/assigned', { params: { status } }),
+  
   // NEW: Admin research management endpoints
   adminGetAllResearch: () => api.get('/research/admin/all'),
   adminUpdateResearch: (id, data) => api.put(`/research/admin/${id}`, data),

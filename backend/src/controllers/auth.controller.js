@@ -14,7 +14,7 @@ exports.register = async (req, res) => {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
-    const validRoles = ['student', 'staff', 'admin'];
+    const validRoles = ['student', 'faculty', 'staff', 'admin'];
     if (!validRoles.includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
