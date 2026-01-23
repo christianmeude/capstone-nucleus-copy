@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
+import toast from 'react-hot-toast';
 import { 
   Upload, 
   FileText, 
@@ -152,6 +153,9 @@ const SubmitResearch = () => {
 
       await researchAPI.submitResearch(submitData);
       
+      toast.success(resubmitData ? 'Research resubmitted successfully! 🎉' : 'Research submitted successfully! 🎉', {
+        duration: 3000,
+      });
       setSuccess(true);
       setTimeout(() => {
         navigate('/student/my-research');
@@ -159,6 +163,9 @@ const SubmitResearch = () => {
     } catch (err) {
       console.error('Submission error:', err);
       const errorMessage = err.response?.data?.error || err.message || 'Failed to submit research';
+      toast.error(errorMessage, {
+        duration: 4000,
+      });
       setError(errorMessage);
       console.error('Full error details:', err.response?.data || err);
     } finally {

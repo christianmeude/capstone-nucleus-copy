@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { 
   BookOpen, 
   Lock, 
@@ -33,13 +34,22 @@ const Login = () => {
     setError('');
     setLoading(true);
 
+    const loadingToast = toast.loading('Signing in...');
     const result = await login(email, password);
     
     setLoading(false);
     
     if (result.success) {
+      toast.success('Welcome back! 👋', {
+        id: loadingToast,
+        duration: 2000,
+      });
       navigate('/dashboard');
     } else {
+      toast.error(result.error || 'Failed to sign in', {
+        id: loadingToast,
+        duration: 4000,
+      });
       setError(result.error);
     }
   };

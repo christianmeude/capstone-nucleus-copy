@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { 
   Users, 
   Search, 
@@ -105,15 +106,24 @@ const UserManagement = () => {
     if (!userToDelete) return;
 
     setActionLoading(true);
+    const loadingToast = toast.loading('Deleting user...');
     try {
       await authAPI.deleteUser(userToDelete.id);
       // Remove user from local state immediately
       setUsers(users.filter(u => u.id !== userToDelete.id));
+      toast.success(`User ${userToDelete.full_name} deleted successfully`, {
+        id: loadingToast,
+        icon: '🗑️',
+        duration: 3000,
+      });
       setShowDeleteModal(false);
       setUserToDelete(null);
     } catch (err) {
       console.error('Failed to delete user:', err);
-      alert(err.response?.data?.error || 'Failed to delete user');
+      toast.error(err.response?.data?.error || 'Failed to delete user', {
+        id: loadingToast,
+        duration: 4000,
+      });
     } finally {
       setActionLoading(false);
     }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { 
   BookOpen, 
   UserPlus, 
@@ -46,16 +47,23 @@ const Register = () => {
     setError('');
 
     if (formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match', {
+        icon: '🔒',
+      });
       setError('Passwords do not match');
       return;
     }
 
     if (formData.password.length < 6) {
+      toast.error('Password must be at least 6 characters', {
+        icon: '⚠️',
+      });
       setError('Password must be at least 6 characters');
       return;
     }
 
     setLoading(true);
+    const loadingToast = toast.loading('Creating your account...');
 
     // CHANGE 2: Pass program to register function
     const result = await register(
@@ -69,8 +77,16 @@ const Register = () => {
     setLoading(false);
 
     if (result.success) {
+      toast.success('Account created successfully! Welcome! 🎉', {
+        id: loadingToast,
+        duration: 3000,
+      });
       navigate('/dashboard');
     } else {
+      toast.error(result.error || 'Failed to create account', {
+        id: loadingToast,
+        duration: 4000,
+      });
       setError(result.error);
     }
   };

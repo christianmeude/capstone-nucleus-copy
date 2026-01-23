@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import toast from 'react-hot-toast';
 import { 
   ArrowLeft, 
   FileText, 
@@ -65,10 +66,13 @@ const ReviewDetail = () => {
 
   const handleApprove = async () => {
     if (!comments.trim()) {
-      alert('Please provide approval comments');
+      toast.error('Please provide approval comments', {
+        icon: '📝',
+      });
       return;
     }
     setActionLoading(true);
+    const loadingToast = toast.loading('Processing approval...');
     try {
       console.log('=== Approving paper ===');
       console.log('Paper ID:', id);
@@ -79,7 +83,10 @@ const ReviewDetail = () => {
       const response = await researchAPI.approveResearch(id, comments);
       console.log('Approval response:', response.data);
       
-      alert('Research approved successfully!');
+      toast.success('Research approved successfully! 🎉', {
+        id: loadingToast,
+        duration: 3000,
+      });
       // Navigate based on user role
       const reviewPath = user?.role === 'faculty' ? '/faculty/review' : 
                         user?.role === 'admin' ? '/admin/papers' : '/staff/review';
@@ -87,7 +94,9 @@ const ReviewDetail = () => {
     } catch (error) {
       console.error('Failed to approve paper:', error);
       console.error('Error response:', error.response?.data);
-      alert(error.response?.data?.error || 'Failed to approve research');
+      toast.error(error.response?.data?.error || 'Failed to approve research', {
+        id: loadingToast,
+      });
     } finally {
       setActionLoading(false);
       setShowApproveModal(false);
@@ -96,19 +105,27 @@ const ReviewDetail = () => {
 
   const handleReject = async () => {
     if (!rejectionReason.trim()) {
-      alert('Please provide a rejection reason');
+      toast.error('Please provide a rejection reason', {
+        icon: '⚠️',
+      });
       return;
     }
     setActionLoading(true);
+    const loadingToast = toast.loading('Processing rejection...');
     try {
       await researchAPI.rejectResearch(id, rejectionReason);
-      alert('Research rejected');
+      toast.success('Research rejected', {
+        id: loadingToast,
+        icon: '❌',
+      });
       // Navigate based on user role
       const reviewPath = user?.role === 'faculty' ? '/faculty/review' : 
                         user?.role === 'admin' ? '/admin/papers' : '/staff/review';
       navigate(reviewPath);
     } catch (error) {
-      alert(error.response?.data?.error || 'Failed to reject research');
+      toast.error(error.response?.data?.error || 'Failed to reject research', {
+        id: loadingToast,
+      });
     } finally {
       setActionLoading(false);
       setShowRejectModal(false);
@@ -117,10 +134,13 @@ const ReviewDetail = () => {
 
   const handleRequestRevision = async () => {
     if (!revisionNotes.trim()) {
-      alert('Please provide revision notes');
+      toast.error('Please provide revision notes', {
+        icon: '📋',
+      });
       return;
     }
     setActionLoading(true);
+    const loadingToast = toast.loading('Requesting revision...');
     try {
       console.log('=== Requesting Revision ===');
       console.log('Paper ID:', id);
@@ -131,7 +151,10 @@ const ReviewDetail = () => {
       const response = await researchAPI.requestRevision(id, revisionNotes);
       console.log('Revision request response:', response.data);
       
-      alert('Revision requested successfully');
+      toast.success('Revision requested successfully! 📝', {
+        id: loadingToast,
+        duration: 3000,
+      });
       // Navigate based on user role
       const reviewPath = user?.role === 'faculty' ? '/faculty/review' : 
                         user?.role === 'admin' ? '/admin/papers' : '/staff/review';
@@ -139,7 +162,9 @@ const ReviewDetail = () => {
     } catch (error) {
       console.error('Failed to request revision:', error);
       console.error('Error response:', error.response?.data);
-      alert(error.response?.data?.error || 'Failed to request revision');
+      toast.error(error.response?.data?.error || 'Failed to request revision', {
+        id: loadingToast,
+      });
     } finally {
       setActionLoading(false);
       setShowRevisionModal(false);

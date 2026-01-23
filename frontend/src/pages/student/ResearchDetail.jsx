@@ -465,7 +465,9 @@ const ResearchDetail = () => {
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(window.location.href);
-                      alert("Link copied to clipboard!");
+                      toast.success('Link copied to clipboard! 🔗', {
+                        duration: 2000,
+                      });
                     }}
                     className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-slate-100 to-white border border-slate-300 text-slate-700 hover:border-indigo-300 transition-colors"
                   >
