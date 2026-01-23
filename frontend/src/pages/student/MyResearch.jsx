@@ -20,7 +20,8 @@ import {
   TrendingUp,
   ArrowRight,
   MoreVertical,
-  ChevronRight
+  ChevronRight,
+  Award
 } from 'lucide-react';
 import { researchAPI } from '../../utils/api';
 
@@ -36,8 +37,8 @@ const MyResearch = () => {
     fetchMyResearch();
     
     const interval = setInterval(() => {
-      fetchMyResearch(true); // Silent refresh
-    }, 5000);
+      fetchMyResearch(true); // Silent refresh every 3 seconds for realtime updates
+    }, 3000);
 
     return () => clearInterval(interval);
   }, []);
@@ -416,7 +417,153 @@ const MyResearch = () => {
                       </div>
                     </div>
                   </div>
+                  {/* Progress Tracker */}
+                  <div className="mb-6 px-4 py-5 bg-gradient-to-r from-slate-50 to-white rounded-xl border border-slate-200">
+                    <h4 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+                      <BarChart3 size={16} className="text-indigo-600" />
+                      Submission Progress
+                    </h4>
+                    <div className="relative">
+                      {/* Progress Line */}
+                      <div className="absolute top-5 left-0 w-full h-1 bg-slate-200 rounded-full"></div>
+                      <div 
+                        className="absolute top-5 left-0 h-1 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full transition-all duration-500"
+                        style={{ 
+                          width: `${
+                            paper.status === 'pending_faculty' ? '25%' :
+                            paper.status === 'pending' ? '50%' :
+                            ['pending_editor', 'pending_admin', 'under_review'].includes(paper.status) ? '75%' :
+                            paper.status === 'approved' ? '100%' :
+                            paper.status === 'revision_required' ? '50%' :
+                            paper.status === 'rejected' ? '100%' :
+                            '25%'
+                          }%` 
+                        }}
+                      ></div>
+                      
+                      {/* Progress Steps */}
+                      <div className="relative flex justify-between items-start">
+                        {/* Step 1: Submitted */}
+                        <div className="flex flex-col items-center" style={{ width: '25%' }}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                            ['pending', 'pending_faculty', 'pending_editor', 'pending_admin', 'under_review', 'approved', 'revision_required', 'rejected'].includes(paper.status)
+                              ? 'bg-gradient-to-br from-indigo-500 to-blue-500 border-indigo-500 shadow-lg'
+                              : 'bg-white border-slate-300'
+                          }`}>
+                            <CheckCircle size={20} className={
+                              ['pending', 'pending_faculty', 'pending_editor', 'pending_admin', 'under_review', 'approved', 'revision_required', 'rejected'].includes(paper.status)
+                                ? 'text-white'
+                                : 'text-slate-400'
+                            } />
+                          </div>
+                          <span className="text-xs font-semibold text-slate-700 mt-2 text-center">Submitted</span>
+                        </div>
 
+                        {/* Step 2: Faculty Review */}
+                        <div className="flex flex-col items-center" style={{ width: '25%' }}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                            ['pending', 'pending_editor', 'pending_admin', 'under_review', 'approved'].includes(paper.status)
+                              ? 'bg-gradient-to-br from-indigo-500 to-blue-500 border-indigo-500 shadow-lg'
+                              : paper.status === 'pending_faculty'
+                              ? 'bg-gradient-to-br from-purple-400 to-pink-400 border-purple-500 shadow-lg animate-pulse'
+                              : paper.status === 'revision_required'
+                              ? 'bg-gradient-to-br from-orange-400 to-amber-400 border-orange-500 shadow-lg'
+                              : paper.status === 'rejected'
+                              ? 'bg-gradient-to-br from-red-400 to-pink-400 border-red-500 shadow-lg'
+                              : 'bg-white border-slate-300'
+                          }`}>
+                            {paper.status === 'pending_faculty' ? (
+                              <Clock size={20} className="text-white animate-pulse" />
+                            ) : ['pending', 'pending_editor', 'pending_admin', 'under_review', 'approved'].includes(paper.status) ? (
+                              <CheckCircle size={20} className="text-white" />
+                            ) : paper.status === 'revision_required' ? (
+                              <AlertCircle size={20} className="text-white" />
+                            ) : paper.status === 'rejected' ? (
+                              <XCircle size={20} className="text-white" />
+                            ) : (
+                              <Eye size={20} className="text-slate-400" />
+                            )}
+                          </div>
+                          <span className="text-xs font-semibold text-slate-700 mt-2 text-center">Faculty Review</span>
+                        </div>
+
+                        {/* Step 3: Staff Review */}
+                        <div className="flex flex-col items-center" style={{ width: '25%' }}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                            ['pending_editor', 'pending_admin', 'under_review', 'approved'].includes(paper.status)
+                              ? 'bg-gradient-to-br from-indigo-500 to-blue-500 border-indigo-500 shadow-lg'
+                              : paper.status === 'pending'
+                              ? 'bg-gradient-to-br from-yellow-400 to-amber-400 border-yellow-500 shadow-lg animate-pulse'
+                              : 'bg-white border-slate-300'
+                          }`}>
+                            {paper.status === 'pending' ? (
+                              <Clock size={20} className="text-white animate-pulse" />
+                            ) : ['pending_editor', 'pending_admin', 'under_review', 'approved'].includes(paper.status) ? (
+                              <CheckCircle size={20} className="text-white" />
+                            ) : (
+                              <Clock size={20} className="text-slate-400" />
+                            )}
+                          </div>
+                          <span className="text-xs font-semibold text-slate-700 mt-2 text-center">Staff Review</span>
+                        </div>
+
+                        {/* Step 4: Final Review */}
+                        <div className="flex flex-col items-center" style={{ width: '25%' }}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                            paper.status === 'approved'
+                              ? 'bg-gradient-to-br from-indigo-500 to-blue-500 border-indigo-500 shadow-lg'
+                              : ['pending_editor', 'pending_admin', 'under_review'].includes(paper.status)
+                              ? 'bg-gradient-to-br from-blue-400 to-cyan-400 border-blue-500 shadow-lg animate-pulse'
+                              : 'bg-white border-slate-300'
+                          }`}>
+                            {['pending_editor', 'pending_admin', 'under_review'].includes(paper.status) ? (
+                              <Clock size={20} className="text-white animate-pulse" />
+                            ) : paper.status === 'approved' ? (
+                              <CheckCircle size={20} className="text-white" />
+                            ) : (
+                              <Shield size={20} className="text-slate-400" />
+                            )}
+                          </div>
+                          <span className="text-xs font-semibold text-slate-700 mt-2 text-center">Final Review</span>
+                        </div>
+
+                        {/* Step 5: Published */}
+                        <div className="flex flex-col items-center" style={{ width: '25%' }}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                            paper.status === 'approved'
+                              ? 'bg-gradient-to-br from-green-500 to-emerald-500 border-green-500 shadow-lg'
+                              : paper.status === 'rejected'
+                              ? 'bg-gradient-to-br from-red-500 to-pink-500 border-red-500 shadow-lg'
+                              : 'bg-white border-slate-300'
+                          }`}>
+                            {paper.status === 'approved' ? (
+                              <CheckCircle size={20} className="text-white" />
+                            ) : paper.status === 'rejected' ? (
+                              <XCircle size={20} className="text-white" />
+                            ) : (
+                              <Award size={20} className="text-slate-400" />
+                            )}
+                          </div>
+                          <span className="text-xs font-semibold text-slate-700 mt-2 text-center">
+                            {paper.status === 'approved' ? 'Published' : paper.status === 'rejected' ? 'Rejected' : 'Publish'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Current Status Description */}
+                    <div className="mt-4 pt-4 border-t border-slate-200">
+                      <p className="text-sm text-slate-600">
+                        <span className="font-bold text-slate-900">Current Status: </span>
+                        {paper.status === 'pending_faculty' && 'Your research has been assigned to a faculty reviewer for evaluation.'}
+                        {paper.status === 'pending' && 'Your research passed faculty review and is now with staff for processing.'}
+                        {['pending_editor', 'pending_admin', 'under_review'].includes(paper.status) && 'Your research is undergoing final administrative review before publication.'}
+                        {paper.status === 'approved' && '🎉 Congratulations! Your research has been published to the repository.'}
+                        {paper.status === 'revision_required' && '⚠️ Please review the feedback below and resubmit with revisions.'}
+                        {paper.status === 'rejected' && 'Your submission was not accepted. Please review the feedback below.'}
+                      </p>
+                    </div>
+                  </div>
                   {/* Feedback Messages */}
                   {paper.rejection_reason && (
                     <div className={`p-4 rounded-xl ${statusConfig.bgColor} border ${statusConfig.text.replace('text-', 'border-')} mt-6`}>

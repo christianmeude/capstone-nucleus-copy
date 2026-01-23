@@ -55,7 +55,6 @@ exports.submitResearch = async (req, res) => {
         co_authors: coAuthors || null,
         category,
         author_id: userId,
-        student_id: userId, // Also set student_id for consistency
         faculty_id: facultyId || null,
         department: department || null,
         // Status logic:
@@ -69,64 +68,98 @@ exports.submitResearch = async (req, res) => {
       .single();
 
     if (dbError) {
-      console.error('Database error:', dbError);
-      return res.status(500).json({ error: 'Failed to save research data' });
+      console.error('=== DATABASE ERROR DETAILS ===');
+      console.error('Error message:', dbError.message);
+      console.error('Error code:', dbError.code);
+      console.error('Error details:', dbError.details);
+      console.error('Error hint:', dbError.hint);
+      console.error('Full error:', JSON.stringify(dbError, null, 2));
+      return res.status(500).json({ 
+        error: 'Failed to save research data',
+        details: dbError.message 
+      });
     }
 
     // Handle co-authors - parse coAuthorIds from request
-    const coAuthorIds = req.body.coAuthorIds ? JSON.parse(req.body.coAuthorIds) : [];
+    let coAuthorIds = [];
+    try {
+      if (req.body.coAuthorIds) {
+        // If it's a string, parse it; if it's already an array, use it
+        coAuthorIds = typeof req.body.coAuthorIds === 'string' 
+          ? JSON.parse(req.body.coAuthorIds) 
+          : req.body.coAuthorIds;
+      }
+    } catch (parseError) {
+      console.error('Error parsing coAuthorIds:', parseError);
+      coAuthorIds = [];
+    }
     
     if (coAuthorIds.length > 0) {
-      // Delete existing co-authors for resubmission
-      if (id) {
-        await supabase
+      try {
+        // Delete existing co-authors for resubmission
+        if (id) {
+          await supabase
+            .from('research_authors')
+            .delete()
+            .eq('research_id', research.id)
+            .neq('is_primary', true);
+        }
+
+        // Insert primary author first (the submitter)
+        const { error: primaryError } = await supabase
           .from('research_authors')
-          .delete()
-          .eq('research_id', research.id)
-          .neq('is_primary', true);
-      }
+          .upsert({
+            research_id: research.id,
+            user_id: userId,
+            author_order: 0,
+            is_primary: true
+          }, {
+            onConflict: 'research_id,user_id'
+          });
 
-      // Insert primary author first (the submitter)
-      await supabase
-        .from('research_authors')
-        .upsert({
+        if (primaryError) {
+          console.error('Error inserting primary author:', primaryError);
+        }
+
+        // Insert co-authors
+        const coAuthorsData = coAuthorIds.map((authorId, index) => ({
           research_id: research.id,
-          user_id: userId,
-          author_order: 0,
-          is_primary: true
-        }, {
-          onConflict: 'research_id,user_id'
-        });
+          user_id: authorId,
+          author_order: index + 1,
+          is_primary: false
+        }));
 
-      // Insert co-authors
-      const coAuthorsData = coAuthorIds.map((authorId, index) => ({
-        research_id: research.id,
-        user_id: authorId,
-        author_order: index + 1,
-        is_primary: false
-      }));
+        const { error: authorsError } = await supabase
+          .from('research_authors')
+          .upsert(coAuthorsData, {
+            onConflict: 'research_id,user_id'
+          });
 
-      const { error: authorsError } = await supabase
-        .from('research_authors')
-        .upsert(coAuthorsData, {
-          onConflict: 'research_id,user_id'
-        });
-
-      if (authorsError) {
-        console.error('Error inserting co-authors:', authorsError);
+        if (authorsError) {
+          console.error('Error inserting co-authors:', authorsError);
+        }
+      } catch (authorTableError) {
+        // If table doesn't exist yet, just log and continue
+        console.log('Note: research_authors table may not exist yet. Run migration to enable co-author feature.');
+        console.error('Author table error:', authorTableError);
       }
     } else {
       // Just insert primary author
-      await supabase
-        .from('research_authors')
-        .upsert({
-          research_id: research.id,
-          user_id: userId,
-          author_order: 0,
-          is_primary: true
-        }, {
-          onConflict: 'research_id,user_id'
-        });
+      try {
+        await supabase
+          .from('research_authors')
+          .upsert({
+            research_id: research.id,
+            user_id: userId,
+            author_order: 0,
+            is_primary: true
+          }, {
+            onConflict: 'research_id,user_id'
+          });
+      } catch (authorTableError) {
+        // If table doesn't exist yet, just log and continue
+        console.log('Note: research_authors table may not exist yet. Run migration to enable co-author feature.');
+      }
     }
 
     // Handle revision resubmission - return paper to the appropriate reviewer
@@ -791,18 +824,63 @@ exports.requestRevision = async (req, res) => {
 // Get published research (public)
 exports.getPublishedResearch = async (req, res) => {
   try {
-    const { category, search } = req.query;
-    let query = supabase.from('research_papers').select(`*, author:users!author_id (id, full_name, email)`).eq('status', 'approved').order('published_date', { ascending: false });
+    const { category, search, year, author } = req.query;
+    
+    let query = supabase
+      .from('research_papers')
+      .select(`
+        *, 
+        author:users!author_id (id, full_name, email),
+        research_authors!research_authors_research_id_fkey (
+          user_id,
+          is_primary,
+          author_order,
+          author:users!research_authors_user_id_fkey (id, full_name, email)
+        )
+      `)
+      .eq('status', 'approved')
+      .order('published_date', { ascending: false });
 
     if (category) query = query.eq('category', category);
     if (search) query = query.or(`title.ilike.%${search}%,abstract.ilike.%${search}%`);
+    
+    // Year filter
+    if (year) {
+      const yearStart = `${year}-01-01`;
+      const yearEnd = `${year}-12-31`;
+      query = query.gte('published_date', yearStart).lte('published_date', yearEnd);
+    }
 
     const { data: papers, error } = await query;
     if (error) throw error;
 
-    const transformedPapers = papers.map(paper => ({ ...paper, users: paper.author }));
+    let transformedPapers = papers.map(paper => ({ 
+      ...paper, 
+      users: paper.author,
+      co_authors: paper.research_authors || []
+    }));
+
+    // Author filter (search across all authors)
+    if (author) {
+      transformedPapers = transformedPapers.filter(paper => {
+        const authorName = author.toLowerCase();
+        // Check primary author
+        if (paper.users?.full_name?.toLowerCase().includes(authorName)) {
+          return true;
+        }
+        // Check co-authors
+        if (paper.co_authors?.some(ca => 
+          ca.author?.full_name?.toLowerCase().includes(authorName)
+        )) {
+          return true;
+        }
+        return false;
+      });
+    }
+
     res.json({ papers: transformedPapers });
   } catch (error) {
+    console.error('Get published research error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };
