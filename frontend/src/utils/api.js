@@ -34,6 +34,9 @@ export const authAPI = {
   getAllUsers: (role) => api.get('/auth/users', { params: { role } }),
   
   deleteUser: (id) => api.delete(`/auth/users/${id}`),
+  
+  // Search students for co-author selection
+  searchStudents: (query) => api.get('/auth/students/search', { params: { query } }),
 };
 
 // Research endpoints

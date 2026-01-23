@@ -10,6 +10,9 @@ router.post('/login', authController.login);
 // Protected routes
 router.get('/me', authenticate, authController.getCurrentUser);
 
+// Search students for co-author selection
+router.get('/students/search', authenticate, authController.searchStudents);
+
 // NEW: Admin Management Routes
 // Note: We use the existing auth.middleware from your previous uploads
 router.get('/users', authenticate, authorize('admin'), authController.getAllUsers);

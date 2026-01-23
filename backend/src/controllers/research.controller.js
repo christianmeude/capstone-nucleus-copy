@@ -55,6 +55,7 @@ exports.submitResearch = async (req, res) => {
         co_authors: coAuthors || null,
         category,
         author_id: userId,
+        student_id: userId, // Also set student_id for consistency
         faculty_id: facultyId || null,
         department: department || null,
         // Status logic:
@@ -70,6 +71,62 @@ exports.submitResearch = async (req, res) => {
     if (dbError) {
       console.error('Database error:', dbError);
       return res.status(500).json({ error: 'Failed to save research data' });
+    }
+
+    // Handle co-authors - parse coAuthorIds from request
+    const coAuthorIds = req.body.coAuthorIds ? JSON.parse(req.body.coAuthorIds) : [];
+    
+    if (coAuthorIds.length > 0) {
+      // Delete existing co-authors for resubmission
+      if (id) {
+        await supabase
+          .from('research_authors')
+          .delete()
+          .eq('research_id', research.id)
+          .neq('is_primary', true);
+      }
+
+      // Insert primary author first (the submitter)
+      await supabase
+        .from('research_authors')
+        .upsert({
+          research_id: research.id,
+          user_id: userId,
+          author_order: 0,
+          is_primary: true
+        }, {
+          onConflict: 'research_id,user_id'
+        });
+
+      // Insert co-authors
+      const coAuthorsData = coAuthorIds.map((authorId, index) => ({
+        research_id: research.id,
+        user_id: authorId,
+        author_order: index + 1,
+        is_primary: false
+      }));
+
+      const { error: authorsError } = await supabase
+        .from('research_authors')
+        .upsert(coAuthorsData, {
+          onConflict: 'research_id,user_id'
+        });
+
+      if (authorsError) {
+        console.error('Error inserting co-authors:', authorsError);
+      }
+    } else {
+      // Just insert primary author
+      await supabase
+        .from('research_authors')
+        .upsert({
+          research_id: research.id,
+          user_id: userId,
+          author_order: 0,
+          is_primary: true
+        }, {
+          onConflict: 'research_id,user_id'
+        });
     }
 
     // Handle revision resubmission - return paper to the appropriate reviewer

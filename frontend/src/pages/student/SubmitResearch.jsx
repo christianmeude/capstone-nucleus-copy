@@ -17,9 +17,12 @@ import {
   Sparkles,
   ArrowLeft,
   Loader2,
-  FileCheck
+  FileCheck,
+  Search,
+  Plus,
+  UserPlus
 } from 'lucide-react';
-import { researchAPI } from '../../utils/api';
+import { researchAPI, authAPI } from '../../utils/api';
 
 const SubmitResearch = () => {
   const navigate = useNavigate();
@@ -34,6 +37,13 @@ const SubmitResearch = () => {
   const [facultyMembers, setFacultyMembers] = useState([]);
   const [file, setFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  
+  // Co-authors state
+  const [selectedCoAuthors, setSelectedCoAuthors] = useState([]);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   
   const [formData, setFormData] = useState({
     title: resubmitData?.title || '',
@@ -108,6 +118,51 @@ const SubmitResearch = () => {
     });
   };
 
+  // Search for students as co-authors
+  const handleStudentSearch = async (query) => {
+    setStudentSearch(query);
+    
+    if (query.length < 2) {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+
+    setSearchLoading(true);
+    setShowSearchDropdown(true);
+    
+    try {
+      const response = await authAPI.searchStudents(query);
+      setSearchResults(response.data.students || []);
+    } catch (error) {
+      console.error('Error searching students:', error);
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const addCoAuthor = (student) => {
+    if (!selectedCoAuthors.find(a => a.id === student.id)) {
+      setSelectedCoAuthors([...selectedCoAuthors, student]);
+      toast.success(`Added ${student.full_name} as co-author`, {
+        icon: '👤',
+        duration: 2000,
+      });
+    }
+    setStudentSearch('');
+    setSearchResults([]);
+    setShowSearchDropdown(false);
+  };
+
+  const removeCoAuthor = (studentId) => {
+    setSelectedCoAuthors(selectedCoAuthors.filter(a => a.id !== studentId));
+    toast('Co-author removed', {
+      icon: '🗑️',
+      duration: 2000,
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -150,6 +205,11 @@ const SubmitResearch = () => {
       submitData.append('category', formData.category);
       submitData.append('facultyId', formData.facultyId);
       submitData.append('department', formData.department);
+      
+      // Add co-author IDs
+      if (selectedCoAuthors.length > 0) {
+        submitData.append('coAuthorIds', JSON.stringify(selectedCoAuthors.map(a => a.id)));
+      }
 
       await researchAPI.submitResearch(submitData);
       
@@ -525,26 +585,103 @@ const SubmitResearch = () => {
             <p className="text-sm text-slate-500">Separate keywords with commas • Improves discoverability</p>
           </div>
 
-          {/* Co-Authors */}
+          {/* Co-Authors - NEW: Search and select students */}
           <div className="space-y-3">
             <label htmlFor="coAuthors" className="block text-lg font-bold text-slate-900">
-              Co-Authors (Optional)
+              Co-Authors
             </label>
+            
+            {/* Selected Co-Authors Display */}
+            {selectedCoAuthors.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {selectedCoAuthors.map((author) => (
+                  <div
+                    key={author.id}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-50 to-blue-50 border-2 border-indigo-200 rounded-xl"
+                  >
+                    <User size={16} className="text-indigo-600" />
+                    <span className="text-sm font-semibold text-indigo-900">{author.full_name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeCoAuthor(author.id)}
+                      className="ml-1 text-indigo-400 hover:text-indigo-600 transition-colors"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Search Input */}
             <div className="relative">
               <input
                 type="text"
-                id="coAuthors"
+                value={studentSearch}
+                onChange={(e) => handleStudentSearch(e.target.value)}
+                onFocus={() => studentSearch.length >= 2 && setShowSearchDropdown(true)}
+                className="w-full px-6 py-4 pl-12 bg-white border-2 border-slate-300 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300 font-medium shadow-sm hover:border-slate-400"
+                placeholder="Search students by name or email..."
+              />
+              <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
+                <Search size={20} className="text-slate-400" />
+              </div>
+              {searchLoading && (
+                <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                  <Loader2 size={20} className="text-indigo-500 animate-spin" />
+                </div>
+              )}
+
+              {/* Search Results Dropdown */}
+              {showSearchDropdown && searchResults.length > 0 && (
+                <div className="absolute z-10 w-full mt-2 bg-white border-2 border-slate-200 rounded-xl shadow-xl max-h-64 overflow-y-auto">
+                  {searchResults.map((student) => (
+                    <button
+                      key={student.id}
+                      type="button"
+                      onClick={() => addCoAuthor(student)}
+                      className="w-full px-4 py-3 text-left hover:bg-indigo-50 transition-colors border-b border-slate-100 last:border-b-0 flex items-center gap-3"
+                      disabled={selectedCoAuthors.find(a => a.id === student.id)}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-blue-500 flex items-center justify-center">
+                        <User size={20} className="text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-slate-900">{student.full_name}</p>
+                        <p className="text-sm text-slate-500">{student.email}</p>
+                        {student.program && (
+                          <p className="text-xs text-slate-400">{student.program}</p>
+                        )}
+                      </div>
+                      {selectedCoAuthors.find(a => a.id === student.id) && (
+                        <CheckCircle size={20} className="text-indigo-600" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="text-sm text-slate-500">
+              <UserPlus size={14} className="inline mr-1" />
+              Search and add students from the system as co-authors
+            </p>
+
+            {/* Old text field for legacy/external co-authors */}
+            <div className="mt-4">
+              <label htmlFor="coAuthorsText" className="block text-sm font-semibold text-slate-700 mb-2">
+                External Co-Authors (Optional)
+              </label>
+              <input
+                type="text"
+                id="coAuthorsText"
                 name="coAuthors"
                 value={formData.coAuthors}
                 onChange={handleChange}
-                className="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300 font-medium shadow-sm hover:border-slate-400"
-                placeholder="John Doe, Jane Smith, etc."
+                className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300 font-medium"
+                placeholder="External collaborators not in the system (comma-separated)"
               />
-              <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
-                <Users size={20} className="text-slate-400" />
-              </div>
+              <p className="text-xs text-slate-400 mt-1">For co-authors outside the university system</p>
             </div>
-            <p className="text-sm text-slate-500">Separate names with commas • Include academic affiliations if known</p>
           </div>
         </div>
 

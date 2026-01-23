@@ -169,6 +169,31 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
+// Search students (for co-author selection)
+exports.searchStudents = async (req, res) => {
+  try {
+    const { query } = req.query;
+
+    if (!query || query.length < 2) {
+      return res.json({ students: [] });
+    }
+
+    const { data: students, error } = await supabase
+      .from('users')
+      .select('id, full_name, email, program')
+      .eq('role', 'student')
+      .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
+      .limit(10);
+
+    if (error) throw error;
+
+    res.json({ students: students || [] });
+  } catch (error) {
+    console.error('Search students error:', error);
+    res.status(500).json({ error: 'Failed to search students' });
+  }
+};
+
 // NEW: Delete User (Admin only)
 exports.deleteUser = async (req, res) => {
   try {
